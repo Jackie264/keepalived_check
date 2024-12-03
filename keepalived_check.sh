@@ -4,6 +4,15 @@
 echo "Running keepalived_check.sh at $(date)"
 logger "Running keepalived_check.sh at $(date)"
 
+# Restart odhcpd if necessary
+restart_odhcpd_if_needed() {
+    if [ "$1" = true ]; then
+        /etc/init.d/odhcpd restart
+        echo "odhcpd restarted"
+        logger "odhcpd restarted"
+    fi
+}
+
 # Check if Keepalived is installed and get the current state
 check_keepalived_state() {
     if ! [ -x "$(command -v keepalived)" ]; then
@@ -26,10 +35,11 @@ check_keepalived_state() {
     echo "Detected Keepalived state: '$state'"
     logger "Detected Keepalived state: '$state'"
 
-    # Adjust DHCP configuration based on the current state
+    restart_odhcpd=false
+
     if [ "$state" = "MASTER" ]; then
-        echo "Keepalived state is MASTER, enabling DHCP and RA"
-        logger "Keepalived state is MASTER, enabling DHCP and RA"
+        echo "Keepalived state is MASTER, enabling DHCP, RA, and NDP"
+        logger "Keepalived state is MASTER, enabling DHCP, RA, and NDP"
 
         # Enable DHCPv4
         uci get dhcp.lan.ignore &> /dev/null
@@ -40,85 +50,111 @@ check_keepalived_state() {
             echo "DHCPv4 enabled"
             logger "DHCPv4 enabled"
         else
-            echo "DHCPv4 is already enabled (ignore not set to 1)"
-            logger "DHCPv4 is already enabled (ignore not set to 1)"
+            echo "DHCPv4 is already enabled (ignore not set to 1), skipping DHCP adjustment"
+            logger "DHCPv4 is already enabled (ignore not set to 1), skipping DHCP adjustment"
         fi
 
         # Enable DHCPv6
         uci get dhcp.lan.dhcpv6 &> /dev/null
         if [ $? -eq 0 ] && [ "$(uci get dhcp.lan.dhcpv6)" = "disabled" ]; then
-            uci set dhcp.lan.dhcpv6='server'  # Set to server to enable DHCPv6
+            uci set dhcp.lan.dhcpv6='server'
             uci commit dhcp
-            /etc/init.d/dnsmasq reload
+            restart_odhcpd=true
             echo "DHCPv6 enabled"
             logger "DHCPv6 enabled"
         else
-            echo "DHCPv6 is already enabled"
-            logger "DHCPv6 is already enabled"
+            echo "DHCPv6 is already enabled, skipping DHCP adjustment"
+            logger "DHCPv6 is already enabled, skipping DHCP adjustment"
         fi
 
-        # Enable RA (Router Advertisement)
+        # Enable RA
         uci get dhcp.lan.ra &> /dev/null
         if [ $? -eq 0 ] && [ "$(uci get dhcp.lan.ra)" = "disabled" ]; then
-            uci set dhcp.lan.ra='server'  # Set to server to enable RA
+            uci set dhcp.lan.ra='server'
             uci commit dhcp
-            /etc/init.d/network reload
-            /etc/init.d/dnsmasq reload
+            restart_odhcpd=true
             echo "RA enabled"
             logger "RA enabled"
         else
-            echo "RA is already enabled"
-            logger "RA is already enabled"
+            echo "RA is already enabled, skipping DHCP adjustment"
+            logger "RA is already enabled, skipping DHCP adjustment"
+        fi
+
+        # Enable NDP (set to relay)
+        uci get dhcp.lan.ndp &> /dev/null
+        if [ $? -eq 0 ] && [ "$(uci get dhcp.lan.ndp)" != "relay" ]; then
+            uci set dhcp.lan.ndp='relay'
+            uci commit dhcp
+            restart_odhcpd=true
+            echo "NDP set to relay"
+            logger "NDP set to relay"
+        else
+            echo "NDP is already set to relay, skipping DHCP adjustment"
+            logger "NDP is already set to relay, skipping DHCP adjustment"
         fi
 
     elif [ "$state" = "BACKUP" ]; then
-        echo "Keepalived state is BACKUP, disabling DHCP and RA"
-        logger "Keepalived state is BACKUP, disabling DHCP and RA"
+        echo "Keepalived state is BACKUP, disabling DHCP, RA, and NDP"
+        logger "Keepalived state is BACKUP, disabling DHCP, RA, and NDP"
 
         # Disable DHCPv4
         uci get dhcp.lan.ignore &> /dev/null
         if [ $? -ne 0 ] || [ "$(uci get dhcp.lan.ignore)" != "1" ]; then
-            uci set dhcp.lan.ignore='1'  # Set to 1 to disable DHCPv4
+            uci set dhcp.lan.ignore='1'
             uci commit dhcp
             /etc/init.d/dnsmasq reload
             echo "DHCPv4 disabled"
             logger "DHCPv4 disabled"
         else
-            echo "DHCPv4 is already disabled (ignore is set to 1)"
-            logger "DHCPv4 is already disabled (ignore is set to 1)"
+            echo "DHCPv4 is already disabled (ignore is set to 1), skipping DHCP adjustment"
+            logger "DHCPv4 is already disabled (ignore is set to 1), skipping DHCP adjustment"
         fi
 
         # Disable DHCPv6
         uci get dhcp.lan.dhcpv6 &> /dev/null
         if [ $? -eq 0 ] && [ "$(uci get dhcp.lan.dhcpv6)" != "disabled" ]; then
-            uci set dhcp.lan.dhcpv6='disabled'  # Set to disabled to disable DHCPv6
+            uci set dhcp.lan.dhcpv6='disabled'
             uci commit dhcp
-            /etc/init.d/dnsmasq reload
+            restart_odhcpd=true
             echo "DHCPv6 disabled"
             logger "DHCPv6 disabled"
         else
-            echo "DHCPv6 is already disabled"
-            logger "DHCPv6 is already disabled"
+            echo "DHCPv6 is already disabled, skipping DHCP adjustment"
+            logger "DHCPv6 is already disabled, skipping DHCP adjustment"
         fi
 
         # Disable RA
         uci get dhcp.lan.ra &> /dev/null
         if [ $? -eq 0 ] && [ "$(uci get dhcp.lan.ra)" != "disabled" ]; then
-            uci set dhcp.lan.ra='disabled'  # Set to disabled to disable RA
+            uci set dhcp.lan.ra='disabled'
             uci commit dhcp
-            /etc/init.d/network reload
-            /etc/init.d/dnsmasq reload
+            restart_odhcpd=true
             echo "RA disabled"
             logger "RA disabled"
         else
-            echo "RA is already disabled"
-            logger "RA is already disabled"
+            echo "RA is already disabled, skipping DHCP adjustment"
+            logger "RA is already disabled, skipping DHCP adjustment"
         fi
 
+        # Disable NDP
+        uci get dhcp.lan.ndp &> /dev/null
+        if [ $? -eq 0 ] && [ "$(uci get dhcp.lan.ndp)" != "disabled" ]; then
+            uci set dhcp.lan.ndp='disabled'
+            uci commit dhcp
+            restart_odhcpd=true
+            echo "NDP disabled"
+            logger "NDP disabled"
+        else
+            echo "NDP is already disabled, skipping DHCP adjustment"
+            logger "NDP is already disabled, skipping DHCP adjustment"
+        fi
     else
         echo "Unknown Keepalived state: $state, skipping DHCP adjustment"
         logger "Unknown Keepalived state: $state, skipping DHCP adjustment"
     fi
+
+    # Call function to restart odhcpd if needed
+    restart_odhcpd_if_needed "$restart_odhcpd"
 }
 
 # Execute the state check function
