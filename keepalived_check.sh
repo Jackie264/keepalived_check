@@ -70,7 +70,7 @@ check_keepalived_state() {
         return 1
     fi
 
-    echo "Detected Keepalived state: $state"
+#    echo "Detected Keepalived state: $state"
     logger "Detected Keepalived state: $state"
 
     restart_odhcpd=false
@@ -78,7 +78,7 @@ check_keepalived_state() {
 
     if [ "$state" = "MASTER" ]; then
         echo "Keepalived state is MASTER, enabling services"
-        logger "Keepalived state is MASTER, enabling services"
+#        logger "Keepalived state is MASTER, enabling services"
 
         # Enable natmap
         if [ "$natmap_installed" = true ]; then
@@ -99,7 +99,7 @@ check_keepalived_state() {
 
     elif [ "$state" = "BACKUP" ]; then
         echo "Keepalived state is BACKUP, disabling services"
-        logger "Keepalived state is BACKUP, disabling services"
+#        logger "Keepalived state is BACKUP, disabling services"
 
         # Disable natmap
         if [ "$natmap_installed" = true ]; then
