@@ -1,5 +1,8 @@
 *Sat Dec 7 update*
 
+**Optimized code**
+> Added checks and controls for NATMAPT to automatically enable NATMAP after switching between BACKUP and MASTER.
+
 **Optimized Features:**
 #### *1.	Reduced Redundant Operations:*
 > The check_and_update function centralizes the configuration check and update process. UCI commands are executed only when changes are required.\
