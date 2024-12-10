@@ -1,3 +1,5 @@
+[中文](./README_CN.md)
+
 *Sat Dec 7 update*
 
 **Optimized code**
