@@ -25,7 +25,7 @@
 *Tue Dec 3 update：*
 
 #### *New Additions for DHCPv6, RA, and NDP:*
-> Includes checks and controls to ensure the backup node can still obtain an IPv6 address while disabling the DHCPv6 service to prevent it from simultaneously distributing IPv6 addresses with the master node.
+> Includes checks and controls to ensure the BACKUP node can still obtain an IPv6 address while disabling the DHCPv6 service to prevent it from simultaneously distributing IPv6 addresses with the MASTER node.
 
 #### *Usage Scenario:*
 > Applicable for high-availability setups using Keepalived for dual-node failover.
