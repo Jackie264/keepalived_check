@@ -24,24 +24,24 @@
 
 *Tue Dec 3 update：*
 
-#### New Additions for DHCPv6, RA, and NDP:
+#### *New Additions for DHCPv6, RA, and NDP:*
 > Includes checks and controls to ensure the backup node can still obtain an IPv6 address while disabling the DHCPv6 service to prevent it from simultaneously distributing IPv6 addresses with the master node.
 
-#### Usage Scenario:
+#### *Usage Scenario:*
 > Applicable for high-availability setups using Keepalived for dual-node failover.
 
-#### Complex Application:
-> When in BACKUP mode, DNSMASQ’s DHCPv4, DHCPv6, and RA services are disabled. Upon switching to MASTER, these services are enabled.\
+#### *Complex Application:*
+> When in BACKUP mode, DNSMASQ’s DHCPv4, DHCPv6, and RA services are disabled. \
+> Upon switching to MASTER, these services are enabled.\
 > This ensures compatibility with setups where DNSMASQ is required by plugins such as AdGuardHome and Passwall2, avoiding disabling the DNSMASQ service itself.
 
-#### Invoked in helper_dnsmasq.sh under Passwall2.
-
+#### *Invoked in helper_dnsmasq.sh under Passwall2:*
 ```
 logic_restart() {
     # load keepalived_check.sh
     /path/to/keepalived_check.sh || true
 ```
-##### Add the script to Cron to execute every minute.
+##### *Add the script to Cron to execute every minute:*
 ```
 * * * * * /path/to/keepalived_check.sh
 ```
