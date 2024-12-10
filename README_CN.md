@@ -24,7 +24,7 @@
 *Tue Dec 3更新：*
 
 **增加 DHCPv6\RA\NDP 相关判断及控制内容:**
-> 确保backup状态下本机仍可以获得IPv6地址的同时，禁用DHCPv6服务，不会产生与master同时分发IPv6地址给客户端。
+> 确保 BACKUP 状态下本机仍可以获得IPv6地址的同时，禁用DHCPv6服务，不会产生与 MASTER 同时分发IPv6地址给客户端。
 
 #### *使用场景：*
 > 网络中采用keepalived实现双机热备高可用。
