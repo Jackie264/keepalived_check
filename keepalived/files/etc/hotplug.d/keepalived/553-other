@@ -58,6 +58,8 @@ update_services() {
 
     case "$ACTION" in
         NOTIFY_MASTER)
+            # Enable DHCPv4 if not already enabled
+            check_and_update "dhcp.lan.ignore" "0"
             # Enable natmap and DHCPv6 settings
             check_and_update "natmap.@global[0].enable" "1" && reload_natmap=true
             check_and_update "dhcp.lan.dhcpv6" "server" && reload_odhcpd=true
@@ -65,6 +67,8 @@ update_services() {
             check_and_update "dhcp.lan.ndp" "relay" && reload_odhcpd=true
             ;;
         NOTIFY_BACKUP)
+            # Disable DHCPv4 if not already disabled
+            check_and_update "dhcp.lan.ignore" "1"
             # Disable natmap and DHCPv6 settings
             check_and_update "natmap.@global[0].enable" "0" && reload_natmap=true
             check_and_update "dhcp.lan.dhcpv6" "disabled" && reload_odhcpd=true
