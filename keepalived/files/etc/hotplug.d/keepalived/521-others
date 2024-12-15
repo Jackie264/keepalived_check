@@ -3,7 +3,7 @@
 # shellcheck source=/dev/null
 . /lib/functions/keepalived/hotplug.sh
 
-set_service_name 553-other
+set_service_name others
 
 logger -t keepalived "Running other_service_check at $(date)"
 
@@ -76,7 +76,7 @@ update_services() {
             check_and_update "dhcp.lan.ndp" "disabled" && reload_odhcpd=true
             ;;
         *)
-            logger -t keepalived "Unknown ACTION: $ACTION"
+            logger -t keepalived "ACTION: $ACTION"
             return
             ;;
     esac
@@ -90,6 +90,8 @@ update_services() {
 update_services
 
 logger -t keepalived "Hotplug script for others triggered with ACTION=$ACTION"
+add_sync_file /tmp/dhcp.leases
 
 keepalived_hotplug
+
 logger -t keepalived "Hotplug script for others completed"
