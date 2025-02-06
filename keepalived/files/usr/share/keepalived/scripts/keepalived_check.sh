@@ -134,6 +134,10 @@ check_keepalived_state() {
 		check_and_update "dhcp.lan.dhcpv6" "disabled" && restart_odhcpd=true
 		check_and_update "dhcp.lan.ra" "disabled" && restart_odhcpd=true
 		check_and_update "dhcp.lan.ndp" "disabled" && restart_odhcpd=true
+  
+		# execute sync_leases.sh
+		logger "Executing sync_leases.sh due to BACKUP state"
+		./sync_leases.sh &
 	else
 		echo "Unknown Keepalived state: $state, skipping service adjustments"
 		logger "Unknown Keepalived state: $state, skipping service adjustments"
