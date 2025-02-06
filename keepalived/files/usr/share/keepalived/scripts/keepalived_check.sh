@@ -137,7 +137,7 @@ check_keepalived_state() {
   
 		# execute sync_leases.sh
 		logger "Executing sync_leases.sh due to BACKUP state"
-		./sync_leases.sh &
+		/usr/share/keepalived/scripts/sync_leases.sh &
 	else
 		echo "Unknown Keepalived state: $state, skipping service adjustments"
 		logger "Unknown Keepalived state: $state, skipping service adjustments"
