@@ -112,7 +112,10 @@ check_keepalived_state() {
 		check_and_update "dhcp.lan.dhcpv6" "server" && restart_odhcpd=true
 		check_and_update "dhcp.lan.ra" "server" && restart_odhcpd=true
 		check_and_update "dhcp.lan.ndp" "relay" && restart_odhcpd=true
-
+  
+		# Skip sync_leases.sh
+		logger "Skipping sync_leases.sh due to MASTER state"
+  
 	elif [ "$state" = "BACKUP" ]; then
 		echo "Keepalived state is BACKUP, disabling services"
 		logger "Keepalived state is BACKUP, disabling services"
