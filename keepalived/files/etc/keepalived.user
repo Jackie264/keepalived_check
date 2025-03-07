@@ -32,6 +32,14 @@ restart_cloudflared_if_needed() {
 	fi
 }
 
+# Sync leases on backup router
+sync_leases_if_needed() {
+	if [ "$1" = "BACKUP" ]; then
+		logger "Executing sync_leases.sh due to BACKUP state"
+		/usr/share/keepalived/scripts/sync_leases.sh &
+	fi
+}
+
 # Check and update UCI settings
 check_and_update() {
 	local config_key=$1
@@ -51,21 +59,23 @@ check_and_update() {
 }
 
 # Check installed services
-check_services_installed() {
-	natmap_installed=true
-	if ! [ -x "$(command -v natmap)" ]; then
-		logger "natmap is not installed, skipping natmap control"
-		natmap_installed=false
-	fi
+natmap_installed=true
+if ! [ -x "$(command -v natmap)" ]; then
+	logger "natmap is not installed, skipping natmap control"
+	natmap_installed=false
+fi
 
-	cloudflared_installed=true
-	if ! [ -x "$(command -v cloudflared)" ]; then
-		logger "cloudflared is not installed, skipping cloudflared control"
-		cloudflared_installed=false
-	fi
-}
+cloudflared_installed=true
+if ! [ -x "$(command -v cloudflared)" ]; then
+	logger "cloudflared is not installed, skipping cloudflared control"
+	cloudflared_installed=false
+fi
 
-# Main script execution: process Keepalived state directly from the ACTION
+# Process Keepalived state directly from the ACTION
+restart_odhcpd=false
+restart_natmap=false
+restart_cloudflared=false
+
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
 
@@ -111,9 +121,6 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	check_and_update "dhcp.lan.ra" "disabled" && restart_odhcpd=true
 	check_and_update "dhcp.lan.ndp" "disabled" && restart_odhcpd=true
 
-	# execute sync_leases.sh
-	logger "Executing sync_leases.sh due to BACKUP state"
-	/usr/share/keepalived/scripts/sync_leases.sh &
 fi
 
 # Restart services if needed
