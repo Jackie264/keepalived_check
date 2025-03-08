@@ -3,6 +3,9 @@
 # Log Keepalived state change
 logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
 
+sleep 5.5
+touch /tmp/keepalived_state_check 2>/dev/null || logger "Error creating /tmp/keepalived_state_check"
+
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
 	logger "Keepalived is shutting down, removing /tmp/keepalived_state_check"
@@ -11,14 +14,14 @@ if [ "$ACTION" = "shutdown" ]; then
 fi
 
 # Check if keepalived is starting up
-if [ "$ACTION" = "startup" ]; then
-	# Check if this is the first run since system startup
-	if [ ! -f /tmp/keepalived_state_check ]; then
-		logger "Delay in 10 seconds before state check at $(date)"
-		sleep 10
-		touch /tmp/keepalived_state_check 2>/dev/null || logger "Error creating /tmp/keepalived_state_check"
-	fi
-fi
+#if [ "$ACTION" = "startup" ]; then
+#	# Check if this is the first run since system startup
+#	if [ ! -f /tmp/keepalived_state_check ]; then
+#		logger "Delay in 10 seconds before state check at $(date)"
+#		sleep 10
+#		touch /tmp/keepalived_state_check 2>/dev/null || logger "Error creating /tmp/keepalived_state_check"
+#	fi
+#fi
 
 # Only handle GROUP events to avoid duplicate triggers
 if [ "$TYPE" != "GROUP" ]; then
