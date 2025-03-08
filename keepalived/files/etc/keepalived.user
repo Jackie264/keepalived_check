@@ -3,16 +3,26 @@
 # Log Keepalived state change
 logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
 
+# Check if keepalived is shutting down
+if [ "$ACTION" = "shutdown" ]; then
+	logger "Keepalived is shutting down, removing /tmp/keepalived_state_check"
+	rm -f /tmp/keepalived_state_check
+	exit 0 # Exit script after shutdown
+fi
+
+# Check if keepalived is starting up
+if [ "$ACTION" = "startup" ]; then
+	# Check if this is the first run since system startup
+	if [ ! -f /tmp/keepalived_state_check ]; then
+		logger "Delay in 10 seconds before state check at $(date)"
+		sleep 10
+		touch /tmp/keepalived_state_check 2>/dev/null || logger "Error creating /tmp/keepalived_state_check"
+	fi
+fi
+
 # Only handle GROUP events to avoid duplicate triggers
 if [ "$TYPE" != "GROUP" ]; then
 	exit 0
-fi
-
-# Check if this is the first run since system startup
-if [ ! -f /tmp/keepalived_state_check ]; then
-	logger "Delay in 10 seconds before state check at $(date)"
-	sleep 10
-	touch /tmp/keepalived_state_check
 fi
 
 # Restart odhcpd if necessary
@@ -80,12 +90,6 @@ fi
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
 
-	# Enable natmap
-	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "1" && restart_natmap=true
-		restart_natmap_if_needed "$ACTION"
-	fi
-
 	# Enable DHCPv4
 	check_and_update "dhcp.lan.ignore" "0"
 
@@ -107,6 +111,12 @@ EOF
 
 	# Delete schedule
 	schedule_sync_leases "$ACTION"
+
+	# Enable natmap
+	if [ "$natmap_installed" = true ]; then
+		check_and_update "natmap.@global[0].enable" "1" && restart_natmap=true
+		restart_natmap_if_needed "$ACTION"
+	fi
 
 elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "Keepalived state is BACKUP, disabling services"
