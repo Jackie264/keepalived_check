@@ -17,29 +17,27 @@ fi
 
 # Restart odhcpd if necessary
 restart_odhcpd_if_needed() {
-	if [ "$1" = true ]; then
-		logger "Restarting odhcpd service"
-		/etc/init.d/odhcpd restart
-	fi
+	logger "Restarting odhcpd service"
+	/etc/init.d/odhcpd restart 2>/dev/null || logger "Error restarting odhcpd"
 }
 
 # Restart natmap if necessary
 restart_natmap_if_needed() {
-	if [ "$1" = true ]; then
+	if [ "$1" = "NOTIFY_MASTER" ]; then
 		logger "Restarting natmap service"
-		/etc/init.d/natmap restart
+		/etc/init.d/natmap restart 2>/dev/null || logger "Error restarting natmap"
 	fi
 }
 
 # Stop natmap if necessary
 stop_natmap_if_needed() {
 	logger "Stopping natmap service"
-	/etc/init.d/natmap stop
+	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
 # Sync leases on backup router
 sync_leases_if_needed() {
-	if [ "$1" = "BACKUP" ]; then
+	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Executing sync_leases.sh due to BACKUP state"
 		/usr/share/keepalived/scripts/sync_leases.sh &
 	fi
@@ -47,12 +45,12 @@ sync_leases_if_needed() {
 
 # Schedule sync  dhcp.leases
 schedule_sync_leases() {
-	if [ "$1" = "BACKUP" ]; then
+	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Scheduling periodic DHCP lease sync"
-		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab -
-	elif [ "$1" = "MASTER" ]; then
+		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+	elif [ "$1" = "NOTIFY_MASTER" ]; then
 		logger "Removing DHCP lease sync cron job"
-		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab -
+		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
 	fi
 }
 
@@ -63,13 +61,11 @@ check_and_update() {
 	local current_value
 	current_value=$(uci get "$config_key" 2>/dev/null)
 
-	if [ "$current_value" = "$target_value" ]; then
-		logger "$config_key is already set to $target_value, skipping"
-		return 1
-	else
+	if [ "$current_value" != "$target_value" ]; then
 		logger "Updating $config_key from $current_value to $target_value"
 		uci set "$config_key=$target_value"
-		return 0
+    	else
+		logger "$config_key is already set to $target_value, skipping"
 	fi
 }
 
@@ -81,15 +77,13 @@ if ! [ -x "$(command -v natmap)" ]; then
 fi
 
 # Process Keepalived state directly from the ACTION
-restart_odhcpd=false
-restart_natmap=false
-
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
 
 	# Enable natmap
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "1" && restart_natmap=true
+		restart_natmap_if_needed "$ACTION"
 	fi
 
 	# Enable DHCPv4
@@ -105,13 +99,14 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	add_list dhcp.lan.ra_flags=home-agent
 	commit dhcp
 EOF
-	restart_odhcpd=true
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	restart_odhcpd_if_needed
 
 	# Skip sync_leases.sh
 	logger "Skipping sync_leases.sh due to MASTER state"
 
 	# Delete schedule
-	schedule_sync_leases "MASTER"
+	schedule_sync_leases "$ACTION"
 
 elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "Keepalived state is BACKUP, disabling services"
@@ -133,12 +128,9 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	delete dhcp.lan.ra_flags
 	commit dhcp
 EOF
-	restart_odhcpd=true
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	restart_odhcpd_if_needed
 
 	# Add schedule
-	schedule_sync_leases "BACKUP"
+	schedule_sync_leases "$ACTION"
 fi
-
-# Restart services if needed
-restart_odhcpd_if_needed "$restart_odhcpd"
-restart_natmap_if_needed "$restart_natmap"
