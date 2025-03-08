@@ -10,11 +10,10 @@ fi
 
 # Check if this is the first run since system startup
 if [ ! -f /tmp/keepalived_check_initialized ]; then
-        sleep 3
-        touch /tmp/keepalived_check_initialized
+	logger "Running keepalived state check at $(date)"
+	sleep 3
+	touch /tmp/keepalived_check_initialized
 fi
-
-logger "Running keepalived state check at $(date)"
 
 # Restart odhcpd if necessary
 restart_odhcpd_if_needed() {
