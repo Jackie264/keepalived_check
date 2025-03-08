@@ -24,12 +24,10 @@ restart_natmap_if_needed() {
 	fi
 }
 
-# Restart cloudflared if necessary
-restart_cloudflared_if_needed() {
-	if [ "$1" = true ]; then
-		logger "Restarting cloudflared service"
-		/etc/init.d/cloudflared restart
-	fi
+# Stop natmap if necessary
+stop_natmap_if_needed() {
+	logger "Stopping natmap service"
+	/etc/init.d/natmap stop
 }
 
 # Sync leases on backup router
@@ -37,6 +35,17 @@ sync_leases_if_needed() {
 	if [ "$1" = "BACKUP" ]; then
 		logger "Executing sync_leases.sh due to BACKUP state"
 		/usr/share/keepalived/scripts/sync_leases.sh &
+	fi
+}
+
+# Schedule sync  dhcp.leases
+schedule_sync_leases() {
+	if [ "$1" = "BACKUP" ]; then
+		logger "Scheduling periodic DHCP lease sync"
+		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab -
+	elif [ "$1" = "MASTER" ]; then
+		logger "Removing DHCP lease sync cron job"
+		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab -
 	fi
 }
 
@@ -53,7 +62,6 @@ check_and_update() {
 	else
 		logger "Updating $config_key from $current_value to $target_value"
 		uci set "$config_key=$target_value"
-		uci commit "${config_key%%.*}"
 		return 0
 	fi
 }
@@ -65,16 +73,9 @@ if ! [ -x "$(command -v natmap)" ]; then
 	natmap_installed=false
 fi
 
-cloudflared_installed=true
-if ! [ -x "$(command -v cloudflared)" ]; then
-	logger "cloudflared is not installed, skipping cloudflared control"
-	cloudflared_installed=false
-fi
-
 # Process Keepalived state directly from the ACTION
 restart_odhcpd=false
 restart_natmap=false
-restart_cloudflared=false
 
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
@@ -84,46 +85,53 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 		check_and_update "natmap.@global[0].enable" "1" && restart_natmap=true
 	fi
 
-	# Enable cloudflared
-	if [ "$cloudflared_installed" = true ]; then
-		check_and_update "cloudflared.config.enabled" "1" && restart_cloudflared=true
-	fi
-
 	# Enable DHCPv4
 	check_and_update "dhcp.lan.ignore" "0"
 
-	# Enable DHCPv6
-	check_and_update "dhcp.lan.dhcpv6" "server" && restart_odhcpd=true
-	check_and_update "dhcp.lan.ra" "server" && restart_odhcpd=true
-	check_and_update "dhcp.lan.ndp" "relay" && restart_odhcpd=true
+	# Enable DHCPv6 settings in batch
+	uci batch <<EOF
+	set dhcp.lan.dhcpv6=server
+	set dhcp.lan.ra=server
+	set dhcp.lan.ndp=relay
+	add_list dhcp.lan.ra_flags=managed-config
+	add_list dhcp.lan.ra_flags=other-config
+	add_list dhcp.lan.ra_flags=home-agent
+	commit dhcp
+EOF
+	restart_odhcpd=true
 
 	# Skip sync_leases.sh
 	logger "Skipping sync_leases.sh due to MASTER state"
+
+	# Delete schedule
+	schedule_sync_leases "MASTER"
 
 elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "Keepalived state is BACKUP, disabling services"
 
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "0" && restart_natmap=true
-	fi
-
-	# Disable cloudflared
-	if [ "$cloudflared_installed" = true ]; then
-		check_and_update "cloudflared.config.enabled" "0" && restart_cloudflared=true
+		check_and_update "natmap.@global[0].enable" "0"
+		stop_natmap_if_needed
 	fi
 
 	# Disable DHCPv4
 	check_and_update "dhcp.lan.ignore" "1"
 
-	# Disable DHCPv6
-	check_and_update "dhcp.lan.dhcpv6" "disabled" && restart_odhcpd=true
-	check_and_update "dhcp.lan.ra" "disabled" && restart_odhcpd=true
-	check_and_update "dhcp.lan.ndp" "disabled" && restart_odhcpd=true
+	# Disable DHCPv6 settings in batch
+	uci batch <<EOF
+	set dhcp.lan.dhcpv6=disabled
+	set dhcp.lan.ra=disabled
+	set dhcp.lan.ndp=disabled
+	delete dhcp.lan.ra_flags
+	commit dhcp
+EOF
+	restart_odhcpd=true
 
+	# Add schedule
+	schedule_sync_leases "BACKUP"
 fi
 
 # Restart services if needed
 restart_odhcpd_if_needed "$restart_odhcpd"
 restart_natmap_if_needed "$restart_natmap"
-restart_cloudflared_if_needed "$restart_cloudflared"
