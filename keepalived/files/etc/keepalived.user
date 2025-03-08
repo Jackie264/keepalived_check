@@ -2,7 +2,6 @@
 
 # Log Keepalived state change
 logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
-
 sleep 5.5
 touch /tmp/keepalived_state_check 2>/dev/null || logger "Error creating /tmp/keepalived_state_check"
 
