@@ -9,10 +9,10 @@ if [ "$TYPE" != "GROUP" ]; then
 fi
 
 # Check if this is the first run since system startup
-if [ ! -f /tmp/keepalived_check_initialized ]; then
-	logger "Waiting 3 seconds for keepalived state check at $(date)"
-	sleep 3
-	touch /tmp/keepalived_check_initialized
+if [ ! -f /tmp/keepalived_state_check ]; then
+	logger "Delay in 10 seconds before state check at $(date)"
+	sleep 10
+	touch /tmp/keepalived_state_check
 fi
 
 # Restart odhcpd if necessary
