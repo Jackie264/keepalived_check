@@ -6,7 +6,7 @@ logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
 	logger "Keepalived is shutting down, removing state files"
-	rm -f /tmp/keepalived_initial_start
+	rm -f /tmp/keepalived_initial_start && rm -f /tmp/keepalived_state
 	exit 0 # Exit script after shutdown
 fi
 
