@@ -22,11 +22,32 @@ if [ "$TYPE" != "GROUP" ]; then
 	exit 0
 fi
 
+if [ "$TYPE" = "GROUP" ]; then
+	case "$ACTION" in
+		NOTIFY_MASTER)
+			echo "MASTER" > /tmp/keepalived_state
+			;;
+		NOTIFY_BACKUP)
+			echo "BACKUP" > /tmp/keepalived_state
+			;;
+	esac
+fi
+
 # **Detected initial 'NOTIFY_BACKUP' after Keepalived start, delay execution**
 if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution"
 	sleep 5.5
+
+	# 读取延迟后的最终状态
+	CURRENT_STATE=$(cat /tmp/keepalived_state)
 	rm -f /tmp/keepalived_initial_start
+
+	if [ "$CURRENT_STATE" = "BACKUP" ]; then
+		logger "After delay, Keepalived is still in BACKUP state, executing NOTIFY_BACKUP logic"
+	else
+		logger "After delay, Keepalived is no longer in BACKUP state, skipping NOTIFY_BACKUP execution"
+		exit 0
+	fi
 fi
 
 # Restart odhcpd if necessary
@@ -35,11 +56,11 @@ restart_odhcpd_if_needed() {
 	/etc/init.d/odhcpd restart 2>/dev/null || logger "Error restarting odhcpd"
 }
 
-# Restart natmap if necessary
-restart_natmap_if_needed() {
+# Start natmap if necessary
+start_natmap_if_needed() {
 	if [ "$1" = "NOTIFY_MASTER" ]; then
-		logger "Restarting natmap service"
-		/etc/init.d/natmap restart 2>/dev/null || logger "Error restarting natmap"
+		logger "Starting natmap service"
+		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
 	fi
 }
 
@@ -52,7 +73,7 @@ stop_natmap_if_needed() {
 # Sync leases on backup router
 sync_leases_if_needed() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
-		logger "Executing sync_leases.sh due to BACKUP state"
+		logger "Executing sync_leases.sh for DHCP lease sync in BACKUP state"
 		/usr/share/keepalived/scripts/sync_leases.sh &
 	fi
 }
@@ -119,7 +140,7 @@ EOF
 	# Enable natmap
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "1"
-		restart_natmap_if_needed "$ACTION"
+		start_natmap_if_needed "$ACTION"
 	fi
 
 elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
@@ -144,6 +165,9 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 EOF
 	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
 	restart_odhcpd_if_needed
+
+	# Sync leases on backup router
+	sync_leases_if_needed "$ACTION"
 
 	# Add schedule
 	schedule_sync_leases "$ACTION"
