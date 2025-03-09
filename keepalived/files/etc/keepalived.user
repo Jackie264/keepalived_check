@@ -118,7 +118,7 @@ EOF
 
 	# Enable natmap
 	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "1" && restart_natmap=true
+		check_and_update "natmap.@global[0].enable" "1"
 		restart_natmap_if_needed "$ACTION"
 	fi
 
