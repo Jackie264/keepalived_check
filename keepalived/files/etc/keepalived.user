@@ -36,7 +36,7 @@ fi
 # **Detected initial 'NOTIFY_BACKUP' after Keepalived start, delay execution**
 if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution"
-	sleep 5.5
+	sleep 6
 
 	# 读取延迟后的最终状态
 	CURRENT_STATE=$(cat /tmp/keepalived_state)
