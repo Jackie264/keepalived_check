@@ -58,7 +58,10 @@ restart_odhcpd_if_needed() {
 
 # Start natmap if necessary
 start_natmap_if_needed() {
-	if [ "$1" = "NOTIFY_MASTER" ]; then
+	# 检查 natmap 服务状态
+	if service natmap status | grep -q "running"; then
+		logger "natmap service is already running, skipping start"
+	else
 		logger "Starting natmap service"
 		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
 	fi
