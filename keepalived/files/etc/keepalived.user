@@ -2,32 +2,31 @@
 
 # Log Keepalived state change
 logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
-if [ ! -f /tmp/keepalived_state_check ]; then
-	logger "Scheduling delayed state check in 5.5 seconds at $(date)"
-	sleep 5.5
-	touch /tmp/keepalived_state_check 2>/dev/null || logger "Error creating /tmp/keepalived_state_check"
-fi
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-	logger "Keepalived is shutting down, removing /tmp/keepalived_state_check"
-	rm -f /tmp/keepalived_state_check
+	logger "Keepalived is shutting down, removing state files"
+	rm -f /tmp/keepalived_initial_start
 	exit 0 # Exit script after shutdown
 fi
 
 # Check if keepalived is starting up
-#if [ "$ACTION" = "startup" ]; then
-#	# Check if this is the first run since system startup
-#	if [ ! -f /tmp/keepalived_state_check ]; then
-#		logger "Scheduling delayed state check in 5 seconds at $(date)"
-#		(sleep 5; touch /tmp/keepalived_state_check; logger "Executing delayed state check at $(date)"; /etc/keepalived.user continue) & # Run in background and log
-#	fi
-#	exit 0 # Exit startup script immediately
+if [ "$ACTION" = "startup" ]; then
+	logger "Keepalived is starting, marking initial start"
+	touch /tmp/keepalived_initial_start
+	exit 0 # Exit startup script immediately
 fi
 
 # Only handle GROUP events to avoid duplicate triggers
 if [ "$TYPE" != "GROUP" ]; then
 	exit 0
+fi
+
+# **Detected initial 'NOTIFY_BACKUP' after Keepalived start, delay execution**
+if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
+	logger "Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution"
+	sleep 5.5
+	rm -f /tmp/keepalived_initial_start
 fi
 
 # Restart odhcpd if necessary
