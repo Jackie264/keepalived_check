@@ -3,6 +3,19 @@
 # Log Keepalived state change
 logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
 
+# Check installed services
+natmap_installed=true
+if ! command -v natmap >/dev/null 2>&1; then
+	logger "natmap is not installed, skipping natmap control"
+	natmap_installed=false
+fi
+
+# Stop natmap if necessary
+stop_natmap_if_needed() {
+	logger "Stopping natmap service"
+	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
+}
+
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
 	# Disable natmap
@@ -45,7 +58,7 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "*** Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution ***"
 	sleep 6
 
-	# 读取延迟后的最终状态
+	# Check the final state of delay
 	CURRENT_STATE=$(cat /tmp/keepalived_state)
 	rm -f /tmp/keepalived_initial_start
 
@@ -75,10 +88,10 @@ start_natmap_if_needed() {
 }
 
 # Stop natmap if necessary
-stop_natmap_if_needed() {
-	logger "Stopping natmap service"
-	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
-}
+#stop_natmap_if_needed() {
+#	logger "Stopping natmap service"
+#	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
+#}
 
 # Sync leases on backup router
 sync_leases_if_needed() {
@@ -115,13 +128,6 @@ check_and_update() {
 	fi
 }
 
-# Check installed services
-natmap_installed=true
-if ! command -v natmap >/dev/null 2>&1; then
-	logger "natmap is not installed, skipping natmap control"
-	natmap_installed=false
-fi
-
 # Process Keepalived state directly from the ACTION
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
@@ -129,16 +135,27 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	# Enable DHCPv4
 	check_and_update "dhcp.lan.ignore" "0"
 
+	# Enable DHCPv6
+	check_and_update "dhcp.lan.dhcpv6" "server"
+	check_and_update "dhcp.lan.ra" "server"
+	check_and_update "dhcp.lan.ndp" "relay"
+
+	uci add_list dhcp.lan.ra_flags=managed-config
+	uci add_list dhcp.lan.ra_flags=other-config
+	uci add_list dhcp.lan.ra_flags=home-agent
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+
 	# Enable DHCPv6 settings in batch
-	uci batch <<EOF
-	set dhcp.lan.dhcpv6=server
-	set dhcp.lan.ra=server
-	set dhcp.lan.ndp=relay
-	add_list dhcp.lan.ra_flags=managed-config
-	add_list dhcp.lan.ra_flags=other-config
-	# add_list dhcp.lan.ra_flags=home-agent
-	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
-EOF
+#	uci batch <<EOF
+#	set dhcp.lan.dhcpv6=server
+#	set dhcp.lan.ra=server
+#	set dhcp.lan.ndp=relay
+#	add_list dhcp.lan.ra_flags=managed-config
+#	add_list dhcp.lan.ra_flags=other-config
+#	add_list dhcp.lan.ra_flags=home-agent
+#	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+#	EOF
+
 	restart_odhcpd_if_needed
 
 	# Skip sync_leases.sh
@@ -149,7 +166,7 @@ EOF
 
 	# Enable natmap
 	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.global.enable" "1"
+		check_and_update "natmap.@global[0].enable" "1"
 		start_natmap_if_needed "$ACTION"
 	fi
 
@@ -158,21 +175,30 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.global.enable" "0"
+		check_and_update "natmap.@global[0].enable" "0"
 		stop_natmap_if_needed "$ACTION"
 	fi
 
 	# Disable DHCPv4
 	check_and_update "dhcp.lan.ignore" "1"
 
+	# Disable DHCPv6
+	check_and_update "dhcp.lan.dhcpv6" "disabled"
+	check_and_update "dhcp.lan.ra" "disabled"
+	check_and_update "dhcp.lan.ndp" "disabled"
+
+	uci delete_list dhcp.lan.ra_flags
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+
 	# Disable DHCPv6 settings in batch
-	uci batch <<EOF
-	set dhcp.lan.dhcpv6=disabled
-	set dhcp.lan.ra=disabled
-	set dhcp.lan.ndp=disabled
-	delete dhcp.lan.ra_flags
-	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
-EOF
+#	uci batch <<EOF
+#	set dhcp.lan.dhcpv6=disabled
+#	set dhcp.lan.ra=disabled
+#	set dhcp.lan.ndp=disabled
+#	delete_list dhcp.lan.ra_flags
+#	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+#	EOF
+
 	restart_odhcpd_if_needed
 
 	# Sync leases on backup router
@@ -180,4 +206,23 @@ EOF
 
 	# Add schedule
 	schedule_sync_leases "$ACTION"
+
+elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
+	logger "Keepalived state is FAULT, disabling services"
+
+	# Disable natmap
+	if [ "$natmap_installed" = true ]; then
+		check_and_update "natmap.@global[0].enable" "0"
+		stop_natmap_if_needed "$ACTION"
+	fi
+
+	# Disable DHCPv6
+	check_and_update "dhcp.lan.dhcpv6" "disabled"
+	check_and_update "dhcp.lan.ra" "disabled"
+	check_and_update "dhcp.lan.ndp" "disabled"
+
+	uci delete_list dhcp.lan.ra_flags
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+
+	restart_odhcpd_if_needed
 fi
