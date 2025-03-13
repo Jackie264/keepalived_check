@@ -5,7 +5,14 @@ logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-	logger "Keepalived is shutting down, removing state files"
+	# Disable natmap
+	if [ "$natmap_installed" = true ]; then
+		logger "*** Keepalived is shutting down, stopping natmap ***"
+		check_and_update "natmap.global.enable" "0"
+		stop_natmap_if_needed "$ACTION"
+	fi
+
+	logger "*** Keepalived is shutting down, removing state files ***"
 	rm -f /tmp/keepalived_initial_start
 	exit 0 # Exit script after shutdown
 fi
@@ -35,7 +42,7 @@ fi
 
 # **Detected initial 'NOTIFY_BACKUP' after Keepalived start, delay execution**
 if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
-	logger "Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution"
+	logger "*** Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution ***"
 	sleep 6
 
 	# 读取延迟后的最终状态
@@ -43,9 +50,9 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	rm -f /tmp/keepalived_initial_start
 
 	if [ "$CURRENT_STATE" = "BACKUP" ]; then
-		logger "After delay, Keepalived is still in BACKUP state, executing NOTIFY_BACKUP logic"
+		logger "*** After delay, Keepalived is still in BACKUP state, executing NOTIFY_BACKUP logic ***"
 	else
-		logger "After delay, Keepalived is no longer in BACKUP state, skipping NOTIFY_BACKUP execution"
+		logger "*** After delay, Keepalived is no longer in BACKUP state, skipping NOTIFY_BACKUP execution ***"
 		exit 0
 	fi
 fi
@@ -102,6 +109,7 @@ check_and_update() {
 	if [ "$current_value" != "$target_value" ]; then
 		logger "Updating $config_key from $current_value to $target_value"
 		uci set "$config_key"="$target_value"
+		uci commit "${config_key%%.*}" 2>/dev/null || logger "Error committing config"
     	else
 		logger "$config_key is already set to $target_value, skipping"
 	fi
@@ -128,7 +136,7 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	set dhcp.lan.ndp=relay
 	add_list dhcp.lan.ra_flags=managed-config
 	add_list dhcp.lan.ra_flags=other-config
-	add_list dhcp.lan.ra_flags=home-agent
+	# add_list dhcp.lan.ra_flags=home-agent
 	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
 EOF
 	restart_odhcpd_if_needed
@@ -141,7 +149,7 @@ EOF
 
 	# Enable natmap
 	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "1"
+		check_and_update "natmap.global.enable" "1"
 		start_natmap_if_needed "$ACTION"
 	fi
 
@@ -150,8 +158,8 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "0"
-		stop_natmap_if_needed
+		check_and_update "natmap.global.enable" "0"
+		stop_natmap_if_needed "$ACTION"
 	fi
 
 	# Disable DHCPv4
