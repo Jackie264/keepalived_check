@@ -18,6 +18,9 @@ stop_natmap_if_needed() {
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
+	uci delete_list dhcp.lan.ra_flags
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
 		logger "*** Keepalived is shutting down, stopping natmap ***"
@@ -56,7 +59,7 @@ fi
 # **Detected initial 'NOTIFY_BACKUP' after Keepalived start, delay execution**
 if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "*** Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution ***"
-	sleep 6
+	sleep 5
 
 	# Check the final state of delay
 	CURRENT_STATE=$(cat /tmp/keepalived_state)
@@ -86,12 +89,6 @@ start_natmap_if_needed() {
 		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
 	fi
 }
-
-# Stop natmap if necessary
-#stop_natmap_if_needed() {
-#	logger "Stopping natmap service"
-#	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
-#}
 
 # Sync leases on backup router
 sync_leases_if_needed() {
@@ -145,17 +142,6 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	uci add_list dhcp.lan.ra_flags=home-agent
 	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
 
-	# Enable DHCPv6 settings in batch
-#	uci batch <<EOF
-#	set dhcp.lan.dhcpv6=server
-#	set dhcp.lan.ra=server
-#	set dhcp.lan.ndp=relay
-#	add_list dhcp.lan.ra_flags=managed-config
-#	add_list dhcp.lan.ra_flags=other-config
-#	add_list dhcp.lan.ra_flags=home-agent
-#	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
-#	EOF
-
 	restart_odhcpd_if_needed
 
 	# Skip sync_leases.sh
@@ -189,15 +175,6 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 
 	uci delete_list dhcp.lan.ra_flags
 	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
-
-	# Disable DHCPv6 settings in batch
-#	uci batch <<EOF
-#	set dhcp.lan.dhcpv6=disabled
-#	set dhcp.lan.ra=disabled
-#	set dhcp.lan.ndp=disabled
-#	delete_list dhcp.lan.ra_flags
-#	commit dhcp 2>/dev/null || logger "Error committing dhcp config"
-#	EOF
 
 	restart_odhcpd_if_needed
 
