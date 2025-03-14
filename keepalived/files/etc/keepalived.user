@@ -92,7 +92,7 @@ start_natmap_if_needed() {
 
 # Sync leases on backup router
 sync_leases_if_needed() {
-	if [ "$1" = "NOTIFY_BACKUP" ]; then
+	if [ "$1" = "NOTIFY_BACKUP" ] || [ "$1" = "NOTIFY_FAULT" ]; then
 		logger "Executing sync_leases.sh for DHCP lease sync in BACKUP state"
 		/usr/share/keepalived/scripts/sync_leases.sh &
 	fi
@@ -202,4 +202,7 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
 
 	restart_odhcpd_if_needed
+
+	# Remove schedule
+	schedule_sync_leases "$ACTION"
 fi
