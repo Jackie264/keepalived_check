@@ -81,7 +81,7 @@ restart_odhcpd_if_needed() {
 
 # Start natmap if necessary
 start_natmap_if_needed() {
-	# 检查 natmap 服务状态
+	# Check natmap staus
 	if service natmap status | grep -q "running"; then
 		logger "natmap service is already running, skipping start"
 	else
@@ -98,7 +98,7 @@ sync_leases_if_needed() {
 	fi
 }
 
-# Schedule sync  dhcp.leases
+# Schedule sync dhcp.leases
 schedule_sync_leases() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Scheduling periodic DHCP lease sync"
