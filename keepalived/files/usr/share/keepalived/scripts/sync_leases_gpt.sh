@@ -70,7 +70,7 @@ TARGET_FILE="/tmp/dhcp.leases"
 TMP_FILE="/tmp/dhcp.leases.tmp"
 
 # Add timeout to rsync command
-rsync -az -e "ssh -o StrictHostKeyChecking=no" --timeout=10 "$SOURCE_IP:$SOURCE_FILE" "$TMP_FILE" >/dev/null 2>&1
+rsync -az --timeout=10 "$SOURCE_IP:$SOURCE_FILE" "$TMP_FILE" >/dev/null 2>&1
 
 if [ $? -ne 0 ]; then
 	logger "Failed to fetch DHCP leases from master ($SOURCE_IP), rsync exited with error"
