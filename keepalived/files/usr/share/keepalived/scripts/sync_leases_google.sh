@@ -40,10 +40,11 @@ SOURCE_FILE="/tmp/dhcp.leases"
 TARGET_FILE="/tmp/dhcp.leases"
 TMP_FILE="/tmp/dhcp.leases.tmp"
 
-rsync -az "$SOURCE_IP:$SOURCE_FILE" "$TMP_FILE" >/dev/null 2>&1
+# Add timeout to rsync command
+rsync -az --timeout=10 "$SOURCE_IP:$SOURCE_FILE" "$TMP_FILE" >/dev/null 2>&1
 
 if [ $? -ne 0 ]; then
-	logger "Failed to fetch DHCP leases from master ($SOURCE_IP)"
+	logger "Failed to fetch DHCP leases from master ($SOURCE_IP), rsync exited with error"
 	exit 1
 fi
 
