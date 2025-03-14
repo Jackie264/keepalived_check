@@ -16,10 +16,18 @@ stop_natmap_if_needed() {
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
+# Function to clear DHCP RA flags
+clear_dhcp_ra_flags() {
+	uci del_list dhcp.lan.ra_flags=managed-config
+	uci del_list dhcp.lan.ra_flags=other-config
+	uci del_list dhcp.lan.ra_flags=home-agent
+	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	logger "*** Cleared DHCP RA flags ***"
+}
+
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-	uci delete_list dhcp.lan.ra_flags
-	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	clear_dhcp_ra_flags "$ACTION"
 
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
@@ -30,14 +38,14 @@ if [ "$ACTION" = "shutdown" ]; then
 
 	logger "*** Keepalived is shutting down, removing state files ***"
 	rm -f /tmp/keepalived_initial_start
-	exit 0 # Exit script after shutdown
+	exit 0
 fi
 
 # Check if keepalived is starting up
 if [ "$ACTION" = "startup" ]; then
 	logger "Keepalived is starting, marking initial start"
 	touch /tmp/keepalived_initial_start
-	exit 0 # Exit startup script immediately
+	exit 0
 fi
 
 # Only handle GROUP events to avoid duplicate triggers
@@ -56,12 +64,12 @@ if [ "$TYPE" = "GROUP" ]; then
 	esac
 fi
 
-# **Detected initial 'NOTIFY_BACKUP' after Keepalived start, delay execution**
+# Handle delayed execution for NOTIFY_BACKUP after startup
 if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "*** Detected initial NOTIFY_BACKUP after Keepalived start, delaying execution ***"
 	sleep 5
 
-	# Check the final state of delay
+	# Check final state
 	CURRENT_STATE=$(cat /tmp/keepalived_state)
 	rm -f /tmp/keepalived_initial_start
 
@@ -81,7 +89,7 @@ restart_odhcpd_if_needed() {
 
 # Start natmap if necessary
 start_natmap_if_needed() {
-	# Check natmap staus
+	# Check natmap status
 	if service natmap status | grep -q "running"; then
 		logger "natmap service is already running, skipping start"
 	else
@@ -129,10 +137,8 @@ check_and_update() {
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
 
-	# Enable DHCPv4
+	# Enable DHCP
 	check_and_update "dhcp.lan.ignore" "0"
-
-	# Enable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "server"
 	check_and_update "dhcp.lan.ra" "server"
 	check_and_update "dhcp.lan.ndp" "relay"
@@ -165,16 +171,13 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 		stop_natmap_if_needed "$ACTION"
 	fi
 
-	# Disable DHCPv4
+	# Disable DHCP
 	check_and_update "dhcp.lan.ignore" "1"
-
-	# Disable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "disabled"
 	check_and_update "dhcp.lan.ra" "disabled"
 	check_and_update "dhcp.lan.ndp" "disabled"
 
-	uci delete_list dhcp.lan.ra_flags
-	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	clear_dhcp_ra_flags "$ACTION"
 
 	restart_odhcpd_if_needed
 
@@ -198,8 +201,7 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	check_and_update "dhcp.lan.ra" "disabled"
 	check_and_update "dhcp.lan.ndp" "disabled"
 
-	uci delete_list dhcp.lan.ra_flags
-	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	clear_dhcp_ra_flags "$ACTION"
 
 	restart_odhcpd_if_needed
 
