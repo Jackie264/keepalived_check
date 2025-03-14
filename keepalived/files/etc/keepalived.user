@@ -100,7 +100,7 @@ start_natmap_if_needed() {
 
 # Sync leases on backup router
 sync_leases_if_needed() {
-	if [ "$1" = "NOTIFY_BACKUP" ] || [ "$1" = "NOTIFY_FAULT" ]; then
+	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Executing sync_leases.sh for DHCP lease sync in BACKUP state"
 		/usr/share/keepalived/scripts/sync_leases.sh &
 	fi
