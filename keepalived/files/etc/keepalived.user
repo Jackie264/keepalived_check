@@ -103,7 +103,7 @@ schedule_sync_leases() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Scheduling periodic DHCP lease sync"
 		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
-	elif [ "$1" = "NOTIFY_MASTER" ]; then
+	elif [ "$1" = "NOTIFY_MASTER" ] || [ "$1" = "NOTIFY_FAULT" ]; then
 		logger "Removing DHCP lease sync cron job"
 		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
 	fi
