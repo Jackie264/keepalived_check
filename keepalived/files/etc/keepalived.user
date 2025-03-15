@@ -16,6 +16,17 @@ stop_natmap_if_needed() {
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
+# Function to add DHCP RA flags
+add_dhcp_ra_flags() {
+	uci batch <<-EOF
+		add_list dhcp.lan.ra_flags=managed-config
+		add_list dhcp.lan.ra_flags=other-config
+		add_list dhcp.lan.ra_flags=home-agent
+		commit dhcp
+	EOF
+	logger "*** Setting DHCP RA flags ***"
+}
+
 # Function to clear DHCP RA flags
 clear_dhcp_ra_flags() {
 	uci batch <<-EOF
@@ -145,9 +156,7 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	check_and_update "dhcp.lan.ra" "server"
 	check_and_update "dhcp.lan.ndp" "relay"
 
-	clear_dhcp_ra_flags "$ACTION"
-	logger "*** Setting DHCPv6 RA flags due to "$ACTION" ***"
-
+	add_dhcp_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Skip sync_leases.sh
@@ -178,7 +187,6 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	check_and_update "dhcp.lan.ndp" "disabled"
 
 	clear_dhcp_ra_flags "$ACTION"
-
 	restart_odhcpd_if_needed
 
 	# Sync leases on backup router
@@ -202,7 +210,6 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	check_and_update "dhcp.lan.ndp" "disabled"
 
 	clear_dhcp_ra_flags "$ACTION"
-
 	restart_odhcpd_if_needed
 
 	# Remove schedule
