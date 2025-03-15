@@ -34,7 +34,7 @@ if [ "$ACTION" = "shutdown" ]; then
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
 		logger "*** Keepalived is shutting down, stopping natmap ***"
-		check_and_update "natmap.global.enable" "0"
+		check_and_update "natmap.@global[0].enable" "0"
 		stop_natmap_if_needed "$ACTION"
 	fi
 
@@ -145,12 +145,7 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	check_and_update "dhcp.lan.ra" "server"
 	check_and_update "dhcp.lan.ndp" "relay"
 
-	uci batch <<-EOF
-		add_list dhcp.lan.ra_flags=managed-config
-		add_list dhcp.lan.ra_flags=other-config
-		add_list dhcp.lan.ra_flags=home-agent
-		commit dhcp
-	EOF
+	clear_dhcp_ra_flags "$ACTION"
 	logger "*** Setting DHCPv6 RA flags due to "$ACTION" ***"
 
 	restart_odhcpd_if_needed
