@@ -18,10 +18,12 @@ stop_natmap_if_needed() {
 
 # Function to clear DHCP RA flags
 clear_dhcp_ra_flags() {
-	uci del_list dhcp.lan.ra_flags=managed-config
-	uci del_list dhcp.lan.ra_flags=other-config
-	uci del_list dhcp.lan.ra_flags=home-agent
-	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	uci batch <<-EOF
+		del_list dhcp.lan.ra_flags=managed-config
+		del_list dhcp.lan.ra_flags=other-config
+		del_list dhcp.lan.ra_flags=home-agent
+		commit dhcp
+	EOF
 	logger "*** Cleared DHCP RA flags ***"
 }
 
@@ -143,10 +145,13 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	check_and_update "dhcp.lan.ra" "server"
 	check_and_update "dhcp.lan.ndp" "relay"
 
-	uci add_list dhcp.lan.ra_flags=managed-config
-	uci add_list dhcp.lan.ra_flags=other-config
-	uci add_list dhcp.lan.ra_flags=home-agent
-	uci commit dhcp 2>/dev/null || logger "Error committing dhcp config"
+	uci batch <<-EOF
+		add_list dhcp.lan.ra_flags=managed-config
+		add_list dhcp.lan.ra_flags=other-config
+		add_list dhcp.lan.ra_flags=home-agent
+		commit dhcp
+	EOF
+	logger "*** Setting DHCPv6 RA flags due to "$ACTION" ***"
 
 	restart_odhcpd_if_needed
 
