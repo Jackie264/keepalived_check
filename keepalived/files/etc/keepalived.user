@@ -16,27 +16,53 @@ stop_natmap_if_needed() {
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
-# Function to add DHCP RA flags
-add_dhcp_ra_flags() {
+# Function ro add RA flags and DHCP option
+add_ra_flags_dhcp_option() {
 	uci batch <<-EOF
+		add_list dhcp.lan.dhcp_option='3,192.88.9.1'
+		add_list dhcp.lan.dhcp_option='6,192.88.9.1'
 		add_list dhcp.lan.ra_flags=managed-config
 		add_list dhcp.lan.ra_flags=other-config
 		add_list dhcp.lan.ra_flags=home-agent
 		commit dhcp
 	EOF
-	logger "*** Setting DHCP RA flags ***"
+	logger "*** Setted DHCP RA flags and DHCP option ***"
 }
 
-# Function to clear DHCP RA flags
-clear_dhcp_ra_flags() {
+# Function to add DHCP RA flags
+#add_dhcp_ra_flags() {
+#	uci batch <<-EOF
+#		add_list dhcp.lan.ra_flags=managed-config
+#		add_list dhcp.lan.ra_flags=other-config
+#		add_list dhcp.lan.ra_flags=home-agent
+#		commit dhcp
+#	EOF
+#	logger "*** Setting DHCP RA flags ***"
+#}
+
+# Function to clear DHCP RA flags and DHCP option
+clear_dhcp_ra_flags_dhcp_option() {
 	uci batch <<-EOF
+		del_list dhcp.lan.dhcp_option='3,192.88.9.1'
+		del_list dhcp.lan.dhcp_option='6,192.88.9.1'
 		del_list dhcp.lan.ra_flags=managed-config
 		del_list dhcp.lan.ra_flags=other-config
 		del_list dhcp.lan.ra_flags=home-agent
 		commit dhcp
 	EOF
-	logger "*** Cleared DHCP RA flags ***"
+	logger "*** Cleared DHCP RA flags and DHCP option ***"
 }
+
+# Function to clear DHCP RA flags
+#clear_dhcp_ra_flags() {
+#	uci batch <<-EOF
+#		del_list dhcp.lan.ra_flags=managed-config
+#		del_list dhcp.lan.ra_flags=other-config
+#		del_list dhcp.lan.ra_flags=home-agent
+#		commit dhcp
+#	EOF
+#	logger "*** Cleared DHCP RA flags ***"
+#}
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
