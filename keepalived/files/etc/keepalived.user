@@ -41,7 +41,7 @@ add_ra_flags_dhcp_option() {
 #}
 
 # Function to clear DHCP RA flags and DHCP option
-clear_dhcp_ra_flags_dhcp_option() {
+clear_ra_flags_dhcp_option() {
 	uci batch <<-EOF
 		del_list dhcp.lan.dhcp_option='3,192.88.9.1'
 		del_list dhcp.lan.dhcp_option='6,192.88.9.1'
@@ -66,7 +66,7 @@ clear_dhcp_ra_flags_dhcp_option() {
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-	clear_dhcp_ra_flags "$ACTION"
+	clear_ra_flags_dhcp_option "$ACTION"
 
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
@@ -182,7 +182,7 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	check_and_update "dhcp.lan.ra" "server"
 	check_and_update "dhcp.lan.ndp" "relay"
 
-	add_dhcp_ra_flags "$ACTION"
+	add_ra_flags_dhcp_option "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Skip sync_leases.sh
@@ -212,7 +212,7 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	check_and_update "dhcp.lan.ra" "disabled"
 	check_and_update "dhcp.lan.ndp" "disabled"
 
-	clear_dhcp_ra_flags "$ACTION"
+	clear_ra_flags_dhcp_option "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Sync leases on backup router
@@ -235,7 +235,7 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	check_and_update "dhcp.lan.ra" "disabled"
 	check_and_update "dhcp.lan.ndp" "disabled"
 
-	clear_dhcp_ra_flags "$ACTION"
+	clear_ra_flags_dhcp_option "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Remove schedule
