@@ -77,11 +77,41 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
-if cmp -s "$TMP_FILE" "$TARGET_FILE"; then
-	logger "DHCP leases are identical, skipping sync"
+#if cmp -s "$TMP_FILE" "$TARGET_FILE"; then
+#	logger "DHCP leases are identical, skipping sync"
+#	rm -f "$TMP_FILE"
+#	exit 0
+#else
+#	logger "DHCP leases changed, updating local file"
+#	mv "$TMP_FILE" "$TARGET_FILE"
+#fi
+
+# Compute current leases file hash
+CURRENT_HASH=$(md5sum "$TMP_FILE" | awk '{print $1}')
+
+# If the status file does not exist, initialize it
+if [ ! -f "$SYNC_STATUS_FILE" ]; then
+	echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
+	logger "Leases sync: First sync, proceeding"
+	mv "$TMP_FILE" "$TARGET_FILE"
+	exit 0
+fi
+
+# Read previous hash
+PREVIOUS_HASH=$(cat "$SYNC_STATUS_FILE")
+
+if [ "$CURRENT_HASH" = "$PREVIOUS_HASH" ]; then
+	# If identical, check if it's the first time logging this state
+	if [ ! -f "$SYNC_STATUS_FILE.identical_logged" ]; then
+		logger "DHCP leases are identical, skipping sync"
+		touch "$SYNC_STATUS_FILE.identical_logged"
+	fi
 	rm -f "$TMP_FILE"
 	exit 0
 else
+	# If different, sync the leases
 	logger "DHCP leases changed, updating local file"
 	mv "$TMP_FILE" "$TARGET_FILE"
+	echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
+	rm -f "$SYNC_STATUS_FILE.identical_logged"
 fi
