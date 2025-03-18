@@ -5,6 +5,7 @@
 
 # Define flag file
 FLAG_FILE="/tmp/sync_leases_first_run"
+SYNC_STATUS_FILE="/tmp/leases_sync_status"
 
 # Function to get the peer LAN IP from keepalived config
 get_peer_lan_ip() {
