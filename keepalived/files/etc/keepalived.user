@@ -16,57 +16,54 @@ stop_natmap_if_needed() {
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
-# Function ro add RA flags and DHCP option
-add_ra_flags_dhcp_option() {
+# Function to enable DHCPv4 add DHCP option
+enable_dhcpv4_add_option() {
 	uci batch <<-EOF
+		set dhcp.lan.ignore=0
 		add_list dhcp.lan.dhcp_option='3,192.88.9.1'
 		add_list dhcp.lan.dhcp_option='6,192.88.9.1'
+		commit dhcp
+	EOF
+	logger "*** Enable DHCPv4 and DHCP option ***"
+}
+
+# Function to add DHCP RA flags
+add_dhcpv6_ra_flags() {
+	uci batch <<-EOF
 		add_list dhcp.lan.ra_flags=managed-config
 		add_list dhcp.lan.ra_flags=other-config
 		add_list dhcp.lan.ra_flags=home-agent
 		commit dhcp
 	EOF
-	logger "*** Setted DHCP RA flags and DHCP option ***"
+	logger "*** Setting DHCP RA flags ***"
 }
 
-# Function to add DHCP RA flags
-#add_dhcp_ra_flags() {
-#	uci batch <<-EOF
-#		add_list dhcp.lan.ra_flags=managed-config
-#		add_list dhcp.lan.ra_flags=other-config
-#		add_list dhcp.lan.ra_flags=home-agent
-#		commit dhcp
-#	EOF
-#	logger "*** Setting DHCP RA flags ***"
-#}
-
-# Function to clear DHCP RA flags and DHCP option
-clear_ra_flags_dhcp_option() {
+# Function to disable DHCPv4 and clear option
+disable_dhcpv4_clear_option() {
 	uci batch <<-EOF
+		set dhcp.lan.ignore=0
 		del_list dhcp.lan.dhcp_option='3,192.88.9.1'
 		del_list dhcp.lan.dhcp_option='6,192.88.9.1'
+		commit dhcp
+	EOF
+	logger "*** Cleared DHCP option ***"
+}
+
+# Function to clear DHCP RA flags
+clear_dhcpv6_ra_flags() {
+	uci batch <<-EOF
 		del_list dhcp.lan.ra_flags=managed-config
 		del_list dhcp.lan.ra_flags=other-config
 		del_list dhcp.lan.ra_flags=home-agent
 		commit dhcp
 	EOF
-	logger "*** Cleared DHCP RA flags and DHCP option ***"
+	logger "*** Cleared DHCP RA flags ***"
 }
-
-# Function to clear DHCP RA flags
-#clear_dhcp_ra_flags() {
-#	uci batch <<-EOF
-#		del_list dhcp.lan.ra_flags=managed-config
-#		del_list dhcp.lan.ra_flags=other-config
-#		del_list dhcp.lan.ra_flags=home-agent
-#		commit dhcp
-#	EOF
-#	logger "*** Cleared DHCP RA flags ***"
-#}
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-	clear_ra_flags_dhcp_option "$ACTION"
+	disable_dhcpv4_clear_option "$ACTION"
+	clear_dhcpv6_ra_flags "$ACTION"
 
 	# Disable natmap
 	if [ "$natmap_installed" = true ]; then
@@ -119,6 +116,12 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 		exit 0
 	fi
 fi
+
+# Restart dnsmasq if necessary
+restart_dnsmasq_if_needed() {
+	logger "Restarting dnsmasq service"
+	/etc/init.d/dnsmasq restart 2>/dev/null || logger "Error restarting dnsmasq"
+}
 
 # Restart odhcpd if necessary
 restart_odhcpd_if_needed() {
@@ -176,13 +179,16 @@ check_and_update() {
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
 
-	# Enable DHCP
-	check_and_update "dhcp.lan.ignore" "0"
+	# Enable DHCPv4
+	enable_dhcpv4_add_option "$ACTION"
+	restart_dnsmasq_if_needed
+
+	# Enable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "server"
 	check_and_update "dhcp.lan.ra" "server"
-	check_and_update "dhcp.lan.ndp" "relay"
+#	check_and_update "dhcp.lan.ndp" "relay"
 
-	add_ra_flags_dhcp_option "$ACTION"
+	add_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Skip sync_leases.sh
@@ -206,13 +212,16 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 		stop_natmap_if_needed "$ACTION"
 	fi
 
-	# Disable DHCP
-	check_and_update "dhcp.lan.ignore" "1"
+	# Disable DHCPv4
+	disable_dhcpv4_clear_option "$ACTION"
+	restart_dnsmasq_if_needed
+
+	# Disable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "disabled"
 	check_and_update "dhcp.lan.ra" "disabled"
-	check_and_update "dhcp.lan.ndp" "disabled"
+#	check_and_update "dhcp.lan.ndp" "disabled"
 
-	clear_ra_flags_dhcp_option "$ACTION"
+	clear_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Sync leases on backup router
@@ -233,9 +242,9 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	# Disable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "disabled"
 	check_and_update "dhcp.lan.ra" "disabled"
-	check_and_update "dhcp.lan.ndp" "disabled"
+#	check_and_update "dhcp.lan.ndp" "disabled"
 
-	clear_ra_flags_dhcp_option "$ACTION"
+	clear_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
 	# Remove schedule
