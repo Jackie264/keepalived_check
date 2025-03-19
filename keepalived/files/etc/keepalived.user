@@ -10,10 +10,22 @@ if ! command -v natmap >/dev/null 2>&1; then
 	natmap_installed=false
 fi
 
+cloudflared_installed=true
+if ! command -v cloudflared >/dev/null 2>&1; then
+	logger "cloudflared is not installed, skipping cloudflared control"
+	cloudflared_installed=false
+fi
+
 # Stop natmap if necessary
 stop_natmap_if_needed() {
 	logger "Stopping natmap service"
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
+}
+
+# Stop cloudflared if necessary
+stop_cloudflared_if_needed() {
+	logger "Stopping cloudflared service"
+	/etc/init.d/cloudflared stop 2>/dev/null || logger "Error stopping cloudflared"
 }
 
 # Function to enable DHCPv4 add DHCP option
@@ -140,6 +152,17 @@ start_natmap_if_needed() {
 	fi
 }
 
+# Start cloudflared if necessary
+start_cloudflared_if_needed() {
+	# Check cloudflared status
+	if service cloudflared status | grep -q "running"; then
+		logger "cloudflared service is already running, skipping start"
+	else
+		logger "Starting cloudflared service"
+		/etc/init.d/cloudflared start 2>/dev/null || logger "Error starting cloudflared"
+	fi
+}
+
 # Sync leases on backup router
 sync_leases_if_needed() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
@@ -197,6 +220,12 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	# Delete schedule
 	schedule_sync_leases "$ACTION"
 
+	# Disable cloudflared
+	if [ "$cloudflared_installed" = true ]; then
+		check_and_update "cloudflared.config.enabled" "0"
+		stop_cloudflared_if_needed "$ACTION"
+	fi
+
 	# Enable natmap
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "1"
@@ -210,6 +239,12 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "0"
 		stop_natmap_if_needed "$ACTION"
+	fi
+
+	# Enable cloudflared
+	if [ "$cloudflared_installed" = true ]; then
+		check_and_update "cloudflared.config.enabled" "1"
+		start_cloudflared_if_needed "$ACTION"
 	fi
 
 	# Disable DHCPv4
@@ -237,6 +272,12 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "0"
 		stop_natmap_if_needed "$ACTION"
+	fi
+
+	# Disable cloudflared
+	if [ "$cloudflared_installed" = true ]; then
+		check_and_update "cloudflared.config.enabled" "0"
+		stop_cloudflared_if_needed "$ACTION"
 	fi
 
 	# Disable DHCPv6
