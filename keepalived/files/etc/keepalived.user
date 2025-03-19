@@ -240,12 +240,12 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	fi
 
 	# Disable DHCPv6
-	check_and_update "dhcp.lan.dhcpv6" "disabled"
-	check_and_update "dhcp.lan.ra" "disabled"
+#	check_and_update "dhcp.lan.dhcpv6" "disabled"
+#	check_and_update "dhcp.lan.ra" "disabled"
 #	check_and_update "dhcp.lan.ndp" "disabled"
 
-	clear_dhcpv6_ra_flags "$ACTION"
-	restart_odhcpd_if_needed
+#	clear_dhcpv6_ra_flags "$ACTION"
+#	restart_odhcpd_if_needed
 
 	# Remove schedule
 	schedule_sync_leases "$ACTION"
