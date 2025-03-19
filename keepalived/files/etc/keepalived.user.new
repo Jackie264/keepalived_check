@@ -200,20 +200,20 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	CURRENT_STATE=$(cat /tmp/keepalived_state)
 	rm -f /tmp/keepalived_initial_start
 
-  if [ "$CURRENT_STATE" = "BACKUP" ]; then
-     logger "*** After delay, executing NOTIFY_BACKUP logic immediately ***"
-     disable_natmap "$ACTION"
-     enable_cloudflared "$ACTION"
-     disable_dhcpv4_clear_option "$ACTION"
-     restart_dnsmasq_if_needed "$ACTION"
-     check_and_update "dhcp.lan.dhcpv6" "disabled"
-     check_and_update "dhcp.lan.ra" "disabled"
-     clear_dhcpv6_ra_flags "$ACTION"
-     restart_odhcpd_if_needed
-     sync_leases_if_needed "$ACTION"
-     schedule_sync_leases "$ACTION"
-     exit 0
-  fi
+	if [ "$CURRENT_STATE" = "BACKUP" ]; then
+		logger "*** After delay, executing NOTIFY_BACKUP logic immediately ***"
+		disable_natmap "$ACTION"
+		enable_cloudflared "$ACTION"
+		disable_dhcpv4_clear_option "$ACTION"
+		restart_dnsmasq_if_needed "$ACTION"
+		check_and_update "dhcp.lan.dhcpv6" "disabled"
+		check_and_update "dhcp.lan.ra" "disabled"
+		clear_dhcpv6_ra_flags "$ACTION"
+		restart_odhcpd_if_needed
+		sync_leases_if_needed "$ACTION"
+		schedule_sync_leases "$ACTION"
+		exit 0
+	fi
 fi
 
 # Sync leases on backup router
