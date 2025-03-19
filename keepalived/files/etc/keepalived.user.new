@@ -72,7 +72,6 @@ enable_natmap() {
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "1"
 		start_natmap_if_needed "$ACTION"
-		logger "*** Starting natmap ***"
 	fi
 }
 
