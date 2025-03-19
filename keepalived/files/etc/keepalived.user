@@ -3,18 +3,23 @@
 # Log Keepalived state change
 logger "Keepalived state changed: TYPE=$TYPE, NAME=$NAME, ACTION=$ACTION"
 
-# Check installed services
+# Check if natmap installed
 natmap_installed=true
 if ! command -v natmap >/dev/null 2>&1; then
 	logger "natmap is not installed, skipping natmap control"
 	natmap_installed=false
 fi
 
-cloudflared_installed=true
-if ! command -v cloudflared >/dev/null 2>&1; then
-	logger "cloudflared is not installed, skipping cloudflared control"
-	cloudflared_installed=false
-fi
+# Start natmap if necessary
+start_natmap_if_needed() {
+	# Check natmap status
+	if service natmap status | grep -q "running"; then
+		logger "natmap service is already running, skipping start"
+	else
+		logger "Starting natmap service"
+		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
+	fi
+}
 
 # Stop natmap if necessary
 stop_natmap_if_needed() {
@@ -22,10 +27,78 @@ stop_natmap_if_needed() {
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
+# Check if cloudflared installed
+cloudflared_installed=true
+if ! command -v cloudflared >/dev/null 2>&1; then
+	logger "cloudflared is not installed, skipping cloudflared control"
+	cloudflared_installed=false
+fi
+
+# Start cloudflared if necessary
+start_cloudflared_if_needed() {
+	# Check cloudflared status
+	if service cloudflared status | grep -q "running"; then
+		logger "cloudflared service is already running, skipping start"
+	else
+		logger "Starting cloudflared service"
+		/etc/init.d/cloudflared start 2>/dev/null || logger "Error starting cloudflared"
+	fi
+}
+
 # Stop cloudflared if necessary
 stop_cloudflared_if_needed() {
 	logger "Stopping cloudflared service"
 	/etc/init.d/cloudflared stop 2>/dev/null || logger "Error stopping cloudflared"
+}
+
+# Check and update UCI settings
+check_and_update() {
+	local config_key=$1
+	local target_value=$2
+	local current_value
+	current_value=$(uci get "$config_key" 2>/dev/null)
+
+	if [ "$current_value" != "$target_value" ]; then
+		logger "Updating $config_key from $current_value to $target_value"
+		uci set "$config_key"="$target_value"
+		uci commit "${config_key%%.*}" 2>/dev/null || logger "Error committing config"
+    	else
+		logger "$config_key is already set to $target_value, skipping"
+	fi
+}
+
+# Function to Enable natmap
+enable_natmap() {
+	if [ "$natmap_installed" = true ]; then
+		check_and_update "natmap.@global[0].enable" "1"
+		start_natmap_if_needed "$ACTION"
+	fi
+}
+
+# Function to Disable natmap
+disable_natmap() {
+	if [ "$natmap_installed" = true ]; then
+		logger "*** Keepalived is shutting down, stopping natmap ***"
+		check_and_update "natmap.@global[0].enable" "0"
+		stop_natmap_if_needed "$ACTION"
+	fi
+}
+
+# Function to Enable cloudflared
+enable_cloudflared() {
+	if [ "$cloudflared_installed" = true ]; then
+		check_and_update "cloudflared.config.enabled" "1"
+		start_cloudflared_if_needed "$ACTION"
+	fi
+}
+
+# Function to Disable cloudflared
+disable_cloudflared() {
+	if [ "$cloudflared_installed" = true ]; then
+		logger "*** Keepalived is shutting down, stopping cloudflared ***"
+		check_and_update "cloudflared.config.enabled" "0"
+		stop_cloudflared_if_needed "$ACTION"
+	fi
 }
 
 # Function to enable DHCPv4 add DHCP option
@@ -72,18 +145,24 @@ clear_dhcpv6_ra_flags() {
 	logger "*** Cleared DHCP RA flags ***"
 }
 
+# Restart dnsmasq if necessary
+restart_dnsmasq_if_needed() {
+	logger "Restarting dnsmasq service"
+	/etc/init.d/dnsmasq restart 2>/dev/null || logger "Error restarting dnsmasq"
+}
+
+# Restart odhcpd if necessary
+restart_odhcpd_if_needed() {
+	logger "Restarting odhcpd service"
+	/etc/init.d/odhcpd restart 2>/dev/null || logger "Error restarting odhcpd"
+}
+
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
 	disable_dhcpv4_clear_option "$ACTION"
 	clear_dhcpv6_ra_flags "$ACTION"
-
-	# Disable natmap
-	if [ "$natmap_installed" = true ]; then
-		logger "*** Keepalived is shutting down, stopping natmap ***"
-		check_and_update "natmap.@global[0].enable" "0"
-		stop_natmap_if_needed "$ACTION"
-	fi
-
+	disable_cloudflared "$ACTION"
+	disable_natmap "$ACTION"
 	logger "*** Keepalived is shutting down, removing state files ***"
 	rm -f /tmp/keepalived_initial_start
 	exit 0
@@ -129,40 +208,6 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	fi
 fi
 
-# Restart dnsmasq if necessary
-restart_dnsmasq_if_needed() {
-	logger "Restarting dnsmasq service"
-	/etc/init.d/dnsmasq restart 2>/dev/null || logger "Error restarting dnsmasq"
-}
-
-# Restart odhcpd if necessary
-restart_odhcpd_if_needed() {
-	logger "Restarting odhcpd service"
-	/etc/init.d/odhcpd restart 2>/dev/null || logger "Error restarting odhcpd"
-}
-
-# Start natmap if necessary
-start_natmap_if_needed() {
-	# Check natmap status
-	if service natmap status | grep -q "running"; then
-		logger "natmap service is already running, skipping start"
-	else
-		logger "Starting natmap service"
-		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
-	fi
-}
-
-# Start cloudflared if necessary
-start_cloudflared_if_needed() {
-	# Check cloudflared status
-	if service cloudflared status | grep -q "running"; then
-		logger "cloudflared service is already running, skipping start"
-	else
-		logger "Starting cloudflared service"
-		/etc/init.d/cloudflared start 2>/dev/null || logger "Error starting cloudflared"
-	fi
-}
-
 # Sync leases on backup router
 sync_leases_if_needed() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
@@ -179,22 +224,6 @@ schedule_sync_leases() {
 	elif [ "$1" = "NOTIFY_MASTER" ] || [ "$1" = "NOTIFY_FAULT" ]; then
 		logger "Removing DHCP lease sync cron job"
 		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
-	fi
-}
-
-# Check and update UCI settings
-check_and_update() {
-	local config_key=$1
-	local target_value=$2
-	local current_value
-	current_value=$(uci get "$config_key" 2>/dev/null)
-
-	if [ "$current_value" != "$target_value" ]; then
-		logger "Updating $config_key from $current_value to $target_value"
-		uci set "$config_key"="$target_value"
-		uci commit "${config_key%%.*}" 2>/dev/null || logger "Error committing config"
-    	else
-		logger "$config_key is already set to $target_value, skipping"
 	fi
 }
 
@@ -221,35 +250,23 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	schedule_sync_leases "$ACTION"
 
 	# Disable cloudflared
-	if [ "$cloudflared_installed" = true ]; then
-		check_and_update "cloudflared.config.enabled" "0"
-		stop_cloudflared_if_needed "$ACTION"
-	fi
+	disable_cloudflared "$ACTION"
 
 	# Enable natmap
-	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "1"
-		start_natmap_if_needed "$ACTION"
-	fi
+	enable_natmap "$ACTION"
 
 elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	logger "Keepalived state is BACKUP, disabling services"
 
 	# Disable natmap
-	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "0"
-		stop_natmap_if_needed "$ACTION"
-	fi
+	disable_natmap "$ACTION"
 
 	# Enable cloudflared
-	if [ "$cloudflared_installed" = true ]; then
-		check_and_update "cloudflared.config.enabled" "1"
-		start_cloudflared_if_needed "$ACTION"
-	fi
+	enable_cloudflared "$ACTION"
 
 	# Disable DHCPv4
 	disable_dhcpv4_clear_option "$ACTION"
-	restart_dnsmasq_if_needed
+	restart_dnsmasq_if_needed "$ACTION"
 
 	# Disable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "disabled"
@@ -269,16 +286,10 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	logger "Keepalived state is FAULT, disabling services"
 
 	# Disable natmap
-	if [ "$natmap_installed" = true ]; then
-		check_and_update "natmap.@global[0].enable" "0"
-		stop_natmap_if_needed "$ACTION"
-	fi
+	disable_natmap "$ACTION"
 
 	# Disable cloudflared
-	if [ "$cloudflared_installed" = true ]; then
-		check_and_update "cloudflared.config.enabled" "0"
-		stop_cloudflared_if_needed "$ACTION"
-	fi
+	disable_cloudflared "$ACTION"
 
 	# Disable DHCPv6
 #	check_and_update "dhcp.lan.dhcpv6" "disabled"
