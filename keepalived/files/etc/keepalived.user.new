@@ -16,14 +16,14 @@ start_natmap_if_needed() {
 	if service natmap status | grep -q "running"; then
 		logger "natmap service is already running, skipping start"
 	else
-		logger "Starting natmap service"
+		logger "***** Starting natmap service *****"
 		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
 	fi
 }
 
 # Stop natmap if necessary
 stop_natmap_if_needed() {
-	logger "Stopping natmap service"
+	logger "***** Stopping natmap service *****"
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
@@ -40,14 +40,14 @@ start_cloudflared_if_needed() {
 	if service cloudflared status | grep -q "running"; then
 		logger "cloudflared service is already running, skipping start"
 	else
-		logger "Starting cloudflared service"
+		logger "***** Starting cloudflared service *****"
 		/etc/init.d/cloudflared start 2>/dev/null || logger "Error starting cloudflared"
 	fi
 }
 
 # Stop cloudflared if necessary
 stop_cloudflared_if_needed() {
-	logger "Stopping cloudflared service"
+	logger "***** Stopping cloudflared service *****"
 	/etc/init.d/cloudflared stop 2>/dev/null || logger "Error stopping cloudflared"
 }
 
@@ -81,7 +81,6 @@ disable_natmap() {
 	if [ "$natmap_installed" = true ]; then
 		check_and_update "natmap.@global[0].enable" "0"
 		stop_natmap_if_needed "$ACTION"
-		logger "*** Stopping natmap ***"
 	fi
 }
 
@@ -90,7 +89,6 @@ enable_cloudflared() {
 	if [ "$cloudflared_installed" = true ]; then
 		check_and_update "cloudflared.config.enabled" "1"
 		start_cloudflared_if_needed "$ACTION"
-		logger "*** Starting cloudflared ***"
 	fi
 }
 
@@ -99,7 +97,6 @@ disable_cloudflared() {
 	if [ "$cloudflared_installed" = true ]; then
 		check_and_update "cloudflared.config.enabled" "0"
 		stop_cloudflared_if_needed "$ACTION"
-		logger "*** Stopping cloudflared ***"
 	fi
 }
 
