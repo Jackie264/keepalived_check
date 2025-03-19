@@ -201,7 +201,7 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	rm -f /tmp/keepalived_initial_start
 
 	if [ "$CURRENT_STATE" = "BACKUP" ]; then
-		logger "*** After delay, executing NOTIFY_BACKUP logic immediately ***"
+		logger "*** After delay, Keepalived is still in BACKUP state, executing NOTIFY_BACKUP logic immediately ***"
 		disable_natmap "$ACTION"
 		enable_cloudflared "$ACTION"
 		disable_dhcpv4_clear_option "$ACTION"
@@ -212,6 +212,8 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 		restart_odhcpd_if_needed
 		sync_leases_if_needed "$ACTION"
 		schedule_sync_leases "$ACTION"
+	else
+		logger "*** After delay, Keepalived is no longer in BACKUP state, skipping NOTIFY_BACKUP execution ***"
 		exit 0
 	fi
 fi
