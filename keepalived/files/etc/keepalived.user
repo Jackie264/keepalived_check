@@ -215,13 +215,31 @@ sync_leases_if_needed() {
 }
 
 # Schedule sync dhcp.leases
+#schedule_sync_leases() {
+#	if [ "$1" = "NOTIFY_BACKUP" ]; then
+#		logger "Scheduling periodic DHCP lease sync"
+#		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+#	elif [ "$1" = "NOTIFY_MASTER" ] || [ "$1" = "NOTIFY_FAULT" ]; then
+#		logger "Removing DHCP lease sync cron job"
+#		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
+#	fi
+#}
+
 schedule_sync_leases() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
-		logger "Scheduling periodic DHCP lease sync"
-		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
+			logger "Scheduling periodic DHCP lease sync"
+			(crontab -l 2>/dev/null; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+		else
+			logger "DHCP lease sync cron job already exists, skipping"
+		fi
 	elif [ "$1" = "NOTIFY_MASTER" ] || [ "$1" = "NOTIFY_FAULT" ]; then
-		logger "Removing DHCP lease sync cron job"
-		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
+		if crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
+			logger "Removing DHCP lease sync cron job"
+			(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
+		else
+			logger "No DHCP lease sync cron job found, skipping removal"
+		fi
 	fi
 }
 
