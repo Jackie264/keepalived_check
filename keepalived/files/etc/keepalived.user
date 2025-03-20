@@ -16,14 +16,14 @@ start_natmap_if_needed() {
 	if service natmap status | grep -q "running"; then
 		logger "natmap service is already running, skipping start"
 	else
-		logger "Starting natmap service"
+		logger "***** Starting natmap service *****"
 		/etc/init.d/natmap start 2>/dev/null || logger "Error starting natmap"
 	fi
 }
 
 # Stop natmap if necessary
 stop_natmap_if_needed() {
-	logger "Stopping natmap service"
+	logger "***** Stopping natmap service *****"
 	/etc/init.d/natmap stop 2>/dev/null || logger "Error stopping natmap"
 }
 
@@ -40,14 +40,14 @@ start_cloudflared_if_needed() {
 	if service cloudflared status | grep -q "running"; then
 		logger "cloudflared service is already running, skipping start"
 	else
-		logger "Starting cloudflared service"
+		logger "***** Starting cloudflared service *****"
 		/etc/init.d/cloudflared start 2>/dev/null || logger "Error starting cloudflared"
 	fi
 }
 
 # Stop cloudflared if necessary
 stop_cloudflared_if_needed() {
-	logger "Stopping cloudflared service"
+	logger "***** Stopping cloudflared service *****"
 	/etc/init.d/cloudflared stop 2>/dev/null || logger "Error stopping cloudflared"
 }
 
@@ -78,7 +78,6 @@ enable_natmap() {
 # Function to Disable natmap
 disable_natmap() {
 	if [ "$natmap_installed" = true ]; then
-		logger "*** Keepalived is shutting down, stopping natmap ***"
 		check_and_update "natmap.@global[0].enable" "0"
 		stop_natmap_if_needed "$ACTION"
 	fi
@@ -95,7 +94,6 @@ enable_cloudflared() {
 # Function to Disable cloudflared
 disable_cloudflared() {
 	if [ "$cloudflared_installed" = true ]; then
-		logger "*** Keepalived is shutting down, stopping cloudflared ***"
 		check_and_update "cloudflared.config.enabled" "0"
 		stop_cloudflared_if_needed "$ACTION"
 	fi
@@ -147,13 +145,13 @@ clear_dhcpv6_ra_flags() {
 
 # Restart dnsmasq if necessary
 restart_dnsmasq_if_needed() {
-	logger "Restarting dnsmasq service"
+	logger "***** Restarting dnsmasq service *****"
 	/etc/init.d/dnsmasq restart 2>/dev/null || logger "Error restarting dnsmasq"
 }
 
 # Restart odhcpd if necessary
 restart_odhcpd_if_needed() {
-	logger "Restarting odhcpd service"
+	logger "***** Restarting odhcpd service *****"
 	/etc/init.d/odhcpd restart 2>/dev/null || logger "Error restarting odhcpd"
 }
 
@@ -170,7 +168,7 @@ fi
 
 # Check if keepalived is starting up
 if [ "$ACTION" = "startup" ]; then
-	logger "Keepalived is starting, marking initial start"
+	logger "***** Keepalived is starting, marking initial start *****"
 	touch /tmp/keepalived_initial_start
 	exit 0
 fi
