@@ -124,7 +124,7 @@ add_dhcpv6_ra_flags() {
 # Function to disable DHCPv4 and clear option
 disable_dhcpv4_clear_option() {
 	uci batch <<-EOF
-		set dhcp.lan.ignore=0
+		set dhcp.lan.ignore=1
 		del_list dhcp.lan.dhcp_option='3,192.88.9.1'
 		del_list dhcp.lan.dhcp_option='6,192.88.9.1'
 		commit dhcp
