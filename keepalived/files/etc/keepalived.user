@@ -206,7 +206,7 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	fi
 fi
 
-# Sync leases on backup router
+# Sync dhcp.leases on backup router
 sync_leases_if_needed() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Executing sync_leases.sh for DHCP lease sync in BACKUP state"
@@ -215,21 +215,11 @@ sync_leases_if_needed() {
 }
 
 # Schedule sync dhcp.leases
-#schedule_sync_leases() {
-#	if [ "$1" = "NOTIFY_BACKUP" ]; then
-#		logger "Scheduling periodic DHCP lease sync"
-#		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh'; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
-#	elif [ "$1" = "NOTIFY_MASTER" ] || [ "$1" = "NOTIFY_FAULT" ]; then
-#		logger "Removing DHCP lease sync cron job"
-#		(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
-#	fi
-#}
-
 schedule_sync_leases() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
 			logger "Scheduling periodic DHCP lease sync"
-			(crontab -l 2>/dev/null; echo "*/2 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+			(crontab -l 2>/dev/null; echo "*/1 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
 		else
 			logger "DHCP lease sync cron job already exists, skipping"
 		fi
@@ -254,8 +244,6 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	# Enable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "server"
 	check_and_update "dhcp.lan.ra" "server"
-#	check_and_update "dhcp.lan.ndp" "relay"
-
 	add_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
@@ -287,8 +275,6 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	# Disable DHCPv6
 	check_and_update "dhcp.lan.dhcpv6" "disabled"
 	check_and_update "dhcp.lan.ra" "disabled"
-#	check_and_update "dhcp.lan.ndp" "disabled"
-
 	clear_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
@@ -306,14 +292,6 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 
 	# Disable cloudflared
 	disable_cloudflared "$ACTION"
-
-	# Disable DHCPv6
-#	check_and_update "dhcp.lan.dhcpv6" "disabled"
-#	check_and_update "dhcp.lan.ra" "disabled"
-#	check_and_update "dhcp.lan.ndp" "disabled"
-
-#	clear_dhcpv6_ra_flags "$ACTION"
-#	restart_odhcpd_if_needed
 
 	# Remove schedule
 	schedule_sync_leases "$ACTION"
