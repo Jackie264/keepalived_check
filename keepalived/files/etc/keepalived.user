@@ -102,10 +102,10 @@ disable_cloudflared() {
 # Function to enable DHCPv4 add DHCP option
 enable_dhcpv4_add_option() {
 	uci batch <<-EOF
-		set dhcp.lan.ignore=0
+		delete dhcp.lan.ignore
 		add_list dhcp.lan.dhcp_option='3,192.88.9.1'
 		add_list dhcp.lan.dhcp_option='6,192.88.9.1'
-		commit dhcp
+		commit dhcp.lan
 	EOF
 	logger "*** Enable DHCPv4 and DHCP option ***"
 }
@@ -116,7 +116,7 @@ add_dhcpv6_ra_flags() {
 		add_list dhcp.lan.ra_flags=managed-config
 		add_list dhcp.lan.ra_flags=other-config
 		add_list dhcp.lan.ra_flags=home-agent
-		commit dhcp
+		commit dhcp.lan
 	EOF
 	logger "*** Setting DHCP RA flags ***"
 }
@@ -127,7 +127,7 @@ disable_dhcpv4_clear_option() {
 		set dhcp.lan.ignore=1
 		del_list dhcp.lan.dhcp_option='3,192.88.9.1'
 		del_list dhcp.lan.dhcp_option='6,192.88.9.1'
-		commit dhcp
+		commit dhcp.lan
 	EOF
 	logger "*** Cleared DHCP option ***"
 }
@@ -138,7 +138,7 @@ clear_dhcpv6_ra_flags() {
 		del_list dhcp.lan.ra_flags=managed-config
 		del_list dhcp.lan.ra_flags=other-config
 		del_list dhcp.lan.ra_flags=home-agent
-		commit dhcp
+		commit dhcp.lan
 	EOF
 	logger "*** Cleared DHCP RA flags ***"
 }
