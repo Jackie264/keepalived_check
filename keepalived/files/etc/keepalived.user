@@ -157,7 +157,7 @@ restart_odhcpd_if_needed() {
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-	disable_dhcpv4_clear_option "$ACTION"
+#	disable_dhcpv4_clear_option "$ACTION"
 	clear_dhcpv6_ra_flags "$ACTION"
 	disable_cloudflared "$ACTION"
 	disable_natmap "$ACTION"
