@@ -210,7 +210,7 @@ fi
 sync_leases_if_needed() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		logger "Executing sync_leases.sh for DHCP lease sync in BACKUP state"
-		/usr/share/keepalived/scripts/sync_leases.sh &
+		/etc/keepalived/scripts/sync_leases.sh &
 	fi
 }
 
@@ -219,7 +219,7 @@ schedule_sync_leases() {
 	if [ "$1" = "NOTIFY_BACKUP" ]; then
 		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
 			logger "Scheduling periodic DHCP lease sync"
-			(crontab -l 2>/dev/null; echo "*/1 * * * * /usr/share/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+			(crontab -l 2>/dev/null; echo "*/1 * * * * /etc/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
 		else
 			logger "DHCP lease sync cron job already exists, skipping"
 		fi
