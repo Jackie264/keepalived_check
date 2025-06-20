@@ -15,13 +15,13 @@ get_peer_lan_ip() {
     config_foreach find_lan_vrrp vrrp_instance
 
     if [ -z "$lan_instance" ]; then
-        logger "Error: Could not find vrrp_instance with interface 'br-lan' in Keepalived configuration."
+        logger "sync_leases: Error: Could not find vrrp_instance with interface 'br-lan' in Keepalived configuration."
         return 1
     fi
 
     config_get peer_name "$lan_instance" unicast_peer
     if [ -z "$peer_name" ]; then
-        logger "Error: Could not find unicast_peer for LAN vrrp_instance ($lan_instance) in Keepalived configuration."
+        logger "sync_leases: Error: Could not find unicast_peer for LAN vrrp_instance ($lan_instance) in Keepalived configuration."
         return 1
     fi
 
@@ -31,7 +31,7 @@ get_peer_lan_ip() {
         echo "$peer_ip"
         return 0
     else
-        logger "Error: Could not find IP address for peer ($peer_name)."
+        logger "sync_leases: Error: Could not find IP address for peer ($peer_name)."
         return 1
     fi
 }
@@ -52,7 +52,7 @@ find_peer_address() {
     fi
 }
 
-# 新增：直接返回对端IP，供外部调用
+# Added: Directly return peer IP for external calls
 if [ "$1" = "get_peer_ip" ]; then
     get_peer_lan_ip
     exit $?
@@ -61,23 +61,23 @@ fi
 PEER_IP=$(get_peer_lan_ip)
 
 if [ -z "$PEER_IP" ]; then
-    logger "sync_leases: 错误: 无法确定对端 LAN IP，退出同步。"
+    logger "sync_leases: Error: Could not determine peer LAN IP, exiting sync."
     exit 1
 fi
 
 # Function to pull leases from peer
 pull_leases() {
     local source_ip=$1
-    logger "sync_leases: 尝试从对端 ($source_ip) 拉取 DHCP 租约文件..."
+    logger "sync_leases: Attempting to pull DHCP leases from peer ($source_ip)..."
     rsync -az --timeout=10 "root@$source_ip:$LOCAL_LEASES_FILE" "$LOCAL_LEASES_FILE" >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        logger "sync_leases: 成功从对端 ($source_ip) 拉取 DHCP 租约。"
-        # 拉取成功后，更新状态文件中的哈希值
+        logger "sync_leases: Successfully pulled DHCP leases from peer ($source_ip)."
+        # After successful pull, update the hash in the status file
         CURRENT_HASH=$(md5sum "$LOCAL_LEASES_FILE" 2>/dev/null | awk '{print $1}')
         echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
         return 0
     else
-        logger "sync_leases: 错误: 从对端 ($source_ip) 拉取 DHCP 租约失败。"
+        logger "sync_leases: Error: Failed to pull DHCP leases from peer ($source_ip)."
         return 1
     fi
 }
@@ -86,40 +86,40 @@ pull_leases() {
 push_leases() {
     local dest_ip=$1
 
-    # 检查本地租约文件是否存在且不为空
-    if [ ! -s "$LOCAL_LEASES_FILE" ]; then # -s 检查文件是否存在且大小大于零
-        logger "sync_leases: 本地租约文件 $LOCAL_LEASES_FILE 不存在或为空，跳过推送。"
+    # Check if local leases file exists and is not empty
+    if [ ! -s "$LOCAL_LEASES_FILE" ]; then # -s checks if file exists and is not empty
+        logger "sync_leases: Local leases file $LOCAL_LEASES_FILE does not exist or is empty, skipping push."
         exit 0
     fi
 
-    # 计算当前租约文件哈希值
+    # Compute current leases file hash
     CURRENT_HASH=$(md5sum "$LOCAL_LEASES_FILE" | awk '{print $1}')
 
-    # 如果状态文件不存在，初始化它
+    # If the status file does not exist, initialize it
     if [ ! -f "$SYNC_STATUS_FILE" ]; then
-        logger "sync_leases: 首次运行或状态文件丢失，执行推送..."
+        logger "sync_leases: First run or status file missing, performing push..."
     else
-        # 读取上一次同步的哈希值
+        # Read the hash from the last sync
         PREVIOUS_HASH=$(cat "$SYNC_STATUS_FILE")
-        # 如果哈希值相同，则文件未改变，无需同步
+        # If hashes are the same, file hasn't changed, no need to sync
         if [ "$CURRENT_HASH" = "$PREVIOUS_HASH" ]; then
-            logger "sync_leases: DHCP 租约文件未变化，跳过推送。"
+            logger "sync_leases: DHCP lease file unchanged, skipping push."
             exit 0
         fi
-        logger "sync_leases: DHCP 租约文件已更新，准备推送至 $dest_ip。"
+        logger "sync_leases: DHCP lease file updated, preparing to push to $dest_ip."
     fi
 
-    logger "sync_leases: 尝试将 DHCP 租约推送到对端 ($dest_ip)。"
+    logger "sync_leases: Attempting to push DHCP leases to peer ($dest_ip)."
     rsync -az --timeout=10 "$LOCAL_LEASES_FILE" "root@$dest_ip:$LOCAL_LEASES_FILE" >/dev/null 2>&1
 
-    # 检查 rsync 命令的执行结果
+    # Check the result of the rsync command
     if [ $? -eq 0 ]; then
-        logger "sync_leases: 成功将 DHCP 租约推送到对端主机 ($dest_ip)。"
-        # 同步成功后，更新状态文件中的哈希值
+        logger "sync_leases: Successfully pushed DHCP leases to peer host ($dest_ip)."
+        # After successful sync, update the hash in the status file
         echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
         return 0
     else
-        logger "sync_leases: 错误: 将 DHCP 租约推送到对端主机 ($dest_ip) 失败。"
+        logger "sync_leases: Error: Failed to push DHCP leases to peer host ($dest_ip)."
         return 1
     fi
 }
