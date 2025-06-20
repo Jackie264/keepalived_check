@@ -4,7 +4,7 @@
 . /lib/functions.sh
 
 # Define flag file
-FLAG_FILE="/tmp/sync_leases_first_run"
+LOCAL_LEASES_FILE="/tmp/dhcp.leases"
 SYNC_STATUS_FILE="/tmp/leases_sync_status"
 
 # Function to get the peer LAN IP from keepalived config
@@ -52,67 +52,46 @@ find_peer_address() {
 	fi
 }
 
-# Delay only on the first run
-if [ ! -f "$FLAG_FILE" ]; then
-	sleep 5
-	touch "$FLAG_FILE"
+PEER_IP=$(get_peer_lan_ip)
+
+if [ -z "$PEER_IP" ]; then
+    logger "sync_leases: 错误: 无法确定对端 LAN IP，退出同步。"
+    exit 1
 fi
 
-# Get the peer LAN IP from the configuration
-SOURCE_IP=$(get_peer_lan_ip)
-
-if [ -z "$SOURCE_IP" ]; then
-	logger "Error: Could not determine peer LAN IP from Keepalived configuration."
-	exit 1
+# 检查本地租约文件是否存在
+if [ ! -f "$LOCAL_LEASES_FILE" ]; then
+    logger "sync_leases: 本地租约文件 $LOCAL_LEASES_FILE 不存在，跳过同步。"
+    exit 0
 fi
-
-SOURCE_FILE="/tmp/dhcp.leases"
-TARGET_FILE="/tmp/dhcp.leases"
-TMP_FILE="/tmp/dhcp.leases.tmp"
-
-# Add timeout to rsync command
-rsync -az --timeout=10 "$SOURCE_IP:$SOURCE_FILE" "$TMP_FILE" >/dev/null 2>&1
-
-if [ $? -ne 0 ]; then
-	logger "Failed to fetch DHCP leases from master ($SOURCE_IP), rsync exited with error"
-	exit 1
-fi
-
-#if cmp -s "$TMP_FILE" "$TARGET_FILE"; then
-#	logger "DHCP leases are identical, skipping sync"
-#	rm -f "$TMP_FILE"
-#	exit 0
-#else
-#	logger "DHCP leases changed, updating local file"
-#	mv "$TMP_FILE" "$TARGET_FILE"
-#fi
 
 # Compute current leases file hash
 CURRENT_HASH=$(md5sum "$TMP_FILE" | awk '{print $1}')
 
 # If the status file does not exist, initialize it
 if [ ! -f "$SYNC_STATUS_FILE" ]; then
-	echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
-	logger "Leases sync: First sync, proceeding"
-	mv "$TMP_FILE" "$TARGET_FILE"
-	exit 0
-fi
-
-# Read previous hash
-PREVIOUS_HASH=$(cat "$SYNC_STATUS_FILE")
-
-if [ "$CURRENT_HASH" = "$PREVIOUS_HASH" ]; then
-	# If identical, check if it's the first time logging this state
-	if [ ! -f "$SYNC_STATUS_FILE.identical_logged" ]; then
-		logger "DHCP leases are identical, skipping sync"
-		touch "$SYNC_STATUS_FILE.identical_logged"
-	fi
-	rm -f "$TMP_FILE"
-	exit 0
+    logger "sync_leases: 首次运行或状态文件丢失，执行同步..."
 else
-	# If different, sync the leases
-	logger "DHCP leases changed, updating local file"
-	mv "$TMP_FILE" "$TARGET_FILE"
-	echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
-	rm -f "$SYNC_STATUS_FILE.identical_logged"
+    # 读取上一次同步的哈希值
+    PREVIOUS_HASH=$(cat "$SYNC_STATUS_FILE")
+    # 如果哈希值相同，则文件未改变，无需同步
+    if [ "$CURRENT_HASH" = "$PREVIOUS_HASH" ]; then
+        logger "sync_leases: DHCP 租约文件未变化，跳过同步。"
+        exit 0
+    fi
+    logger "sync_leases: DHCP 租约文件已更新，准备同步到 $PEER_IP。"
 fi
+
+rsync -az --timeout=10 "$LOCAL_LEASES_FILE" "root@$PEER_IP:$LOCAL_LEASES_FILE" >/dev/null 2>&1
+
+# 检查 rsync 命令的执行结果
+if [ $? -eq 0 ]; then
+    logger "sync_leases: 成功将 DHCP 租约同步到 Backup 主机 ($PEER_IP)。"
+    # 同步成功后，更新状态文件中的哈希值
+    echo "$CURRENT_HASH" > "$SYNC_STATUS_FILE"
+else
+    logger "sync_leases: 错误: 将 DHCP 租约同步到 Backup 主机 ($PEER_IP) 失败。"
+    exit 1
+fi
+
+exit 0
