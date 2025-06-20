@@ -62,7 +62,7 @@ check_and_update() {
 		logger "Updating $config_key from $current_value to $target_value"
 		uci set "$config_key"="$target_value"
 		uci commit "${config_key%%.*}" 2>/dev/null || logger "Error committing config"
-    	else
+		else
 		logger "$config_key is already set to $target_value, skipping"
 	fi
 }
@@ -209,43 +209,38 @@ fi
 # --- LOGIC CHANGE HIGHLIGHT ---
 # Master主机会主动同步leases文件给Backup主机
 master_initiates_sync() {
-	if [ "$1" = "NOTIFY_MASTER" ]; then
-		logger "Executing sync_leases.sh to push DHCP leases in MASTER state"
-		# 使用 & 在后台运行，避免阻塞keepalived主进程
-		/etc/keepalived/scripts/sync_leases.sh &
-	fi
-}
+	local sync_direction=$1
+	local peer_ip=$(/etc/keepalived/scripts/sync_leases.sh get_peer_ip) # 假设 sync_leases.sh 可以获取对端 IP
 
-# --- LOGIC CHANGE HIGHLIGHT ---
-# Master主机上设置定时任务，Backup主机上则移除
-schedule_sync_leases() {
-	if [ "$1" = "NOTIFY_MASTER" ]; then
-		# 检查crontab中是否已存在该任务
-		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
-			logger "Scheduling periodic DHCP lease sync on MASTER"
-			# 每分钟执行一次同步脚本
-			(crontab -l 2>/dev/null; echo "*/1 * * * * /etc/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
-		else
-			logger "DHCP lease sync cron job already exists, skipping"
-		fi
-	elif [ "$1" = "NOTIFY_BACKUP" ] || [ "$1" = "NOTIFY_FAULT" ]; then
-		# 检查crontab中是否存在该任务
-		if crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
-			logger "Removing DHCP lease sync cron job on BACKUP/FAULT"
-			# 从crontab中移除该任务
-			(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
-		else
-			logger "No DHCP lease sync cron job found, skipping removal"
-		fi
+	if [ -z "$peer_ip" ]; then
+		logger "master_initiates_sync: Error: Could not determine peer LAN IP, skipping sync."
+		return 1
+	fi
+
+	# 新增逻辑：Master 在启动时，先尝试从对端拉取
+	if [ "$sync_direction" = "PULL_ON_MASTER_START" ]; then
+		logger "Executing sync_leases.sh to pull DHCP leases from peer ($peer_ip) in MASTER startup"
+		# 尝试从对端拉取，如果对端存在且活跃
+		/etc/keepalived/scripts/sync_leases.sh pull "$peer_ip" & # 后台执行，避免阻塞
+	elif [ "$sync_direction" = "NOTIFY_MASTER" ]; then
+		logger "Executing sync_leases.sh to push DHCP leases to peer ($peer_ip) in MASTER state"
+		# 正常 MASTER 运行时推送
+		/etc/keepalived/scripts/sync_leases.sh push "$peer_ip" & # 后台执行
 	fi
 }
-# --- END OF LOGIC CHANGE ---
+# --- END OF MODIFIED BLOCK ---
 
 
 # Process Keepalived state directly from the ACTION
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	logger "Keepalived state is MASTER, enabling services"
 
+	# 优先：Master 启动时尝试从对端拉取租约文件
+	# 这一步应该在 dnsmasq 启动之前完成，确保它能加载到最新的租约
+	master_initiates_sync "PULL_ON_MASTER_START" #
+	# 给拉取操作一些时间
+	sleep 1 #
+	
 	# Enable DHCPv4
 	enable_dhcpv4_add_option "$ACTION"
 	restart_dnsmasq_if_needed
@@ -256,12 +251,9 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	add_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
-	# --- MODIFIED BLOCK ---
-	# Master initiates a sync and schedules future syncs
-	master_initiates_sync "$ACTION"
-	schedule_sync_leases "$ACTION"
-	# --- END OF MODIFICATION ---
-
+	# Master 启动完成后，再设置定时任务进行周期性推送
+ 	schedule_sync_leases "$ACTION"
+  
 	# Disable cloudflared
 	disable_cloudflared "$ACTION"
 
