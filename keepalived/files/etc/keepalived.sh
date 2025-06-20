@@ -157,7 +157,7 @@ restart_odhcpd_if_needed() {
 
 # Check if keepalived is shutting down
 if [ "$ACTION" = "shutdown" ]; then
-#	disable_dhcpv4_clear_option "$ACTION"
+#	disable_dhcpv4_clear_option "$ACTION" # Original line, commented out
 	clear_dhcpv6_ra_flags "$ACTION"
 	disable_cloudflared "$ACTION"
 	disable_natmap "$ACTION"
@@ -200,14 +200,32 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 
 	if [ "$CURRENT_STATE" = "BACKUP" ]; then
 		logger "*** After delay, Keepalived is still in BACKUP state, executing NOTIFY_BACKUP logic ***"
+		# Original NOTIFY_BACKUP logic moved here
+		# Disable natmap
+		disable_natmap "$ACTION"
+
+		# Enable cloudflared
+		enable_cloudflared "$ACTION"
+
+		# Disable DHCPv4
+		disable_dhcpv4_clear_option "$ACTION"
+		restart_dnsmasq_if_needed "$ACTION"
+
+		# Disable DHCPv6
+		check_and_update "dhcp.lan.dhcpv6" "disabled"
+		check_and_update "dhcp.lan.ra" "disabled"
+		clear_dhcpv6_ra_flags "$ACTION"
+		restart_odhcpd_if_needed
+
+		# Remove schedule on BACKUP state
+		schedule_sync_leases "$ACTION"
 	else
 		logger "*** After delay, Keepalived is no longer in BACKUP state, skipping NOTIFY_BACKUP execution ***"
 		exit 0
 	fi
 fi
 
-# --- LOGIC CHANGE HIGHLIGHT ---
-# Master主机会主动同步leases文件给Backup主机
+# Master主机会主动同步leases文件给Backup主机 (或从Backup拉取)
 master_initiates_sync() {
 	local sync_direction=$1
 	local peer_ip=$(/etc/keepalived/scripts/sync_leases.sh get_peer_ip) # 假设 sync_leases.sh 可以获取对端 IP
@@ -228,7 +246,6 @@ master_initiates_sync() {
 		/etc/keepalived/scripts/sync_leases.sh push "$peer_ip" & # 后台执行
 	fi
 }
-# --- END OF MODIFIED BLOCK ---
 
 # Master主机上设置定时任务，Backup主机上则移除
 schedule_sync_leases() {
@@ -237,7 +254,7 @@ schedule_sync_leases() {
 		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
 			logger "Scheduling periodic DHCP lease sync on MASTER"
 			# 每分钟执行一次同步脚本
-			(crontab -l 2>/dev/null; echo "*/1 * * * * /etc/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+			(crontab -l 2>/dev/null; echo "*/1 * * * * /etc/keepalived/scripts/sync_leases.sh push") | crontab - 2>/dev/null || logger "Error setting cron job" # Added 'push' parameter
 		else
 			logger "DHCP lease sync cron job already exists, skipping"
 		fi
@@ -252,7 +269,6 @@ schedule_sync_leases() {
 		fi
 	fi
 }
-# --- END OF LOGIC CHANGE ---
 
 # Process Keepalived state directly from the ACTION
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
@@ -260,10 +276,10 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 
 	# 优先：Master 启动时尝试从对端拉取租约文件
 	# 这一步应该在 dnsmasq 启动之前完成，确保它能加载到最新的租约
-	master_initiates_sync "PULL_ON_MASTER_START" #
+	master_initiates_sync "PULL_ON_MASTER_START"
 	# 给拉取操作一些时间
-	sleep 1 #
-	
+	sleep 3 # 从 1s 增加到 3s，以确保rsync有足够时间完成
+
 	# Enable DHCPv4
 	enable_dhcpv4_add_option "$ACTION"
 	restart_dnsmasq_if_needed
@@ -284,6 +300,10 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	enable_natmap "$ACTION"
 
 elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
+	# 此处逻辑已在上面的 `if [ -f /tmp/keepalived_initial_start ]` 块中处理，
+	# 确保只在非初始启动或确认保持BACKUP状态时执行
+	# 如果是初始启动且快速切换到 MASTER，则这部分会被跳过
+	# 如果是正常运行中切换到 BACKUP，或者初始启动后确实保持 BACKUP，则执行以下逻辑
 	logger "Keepalived state is BACKUP, disabling services"
 
 	# Disable natmap
@@ -302,10 +322,8 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	clear_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
-	# --- MODIFIED BLOCK ---
 	# Backup router now only removes the cron job
 	schedule_sync_leases "$ACTION"
-	# --- END OF MODIFICATION ---
 
 elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	logger "Keepalived state is FAULT, disabling services"
@@ -316,8 +334,6 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	# Disable cloudflared
 	disable_cloudflared "$ACTION"
 
-	# --- MODIFIED BLOCK ---
 	# Remove schedule on FAULT state
 	schedule_sync_leases "$ACTION"
-	# --- END OF MODIFICATION ---
 fi
