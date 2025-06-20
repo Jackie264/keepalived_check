@@ -206,32 +206,41 @@ if [ -f /tmp/keepalived_initial_start ] && [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	fi
 fi
 
-# Sync dhcp.leases on backup router
-sync_leases_if_needed() {
-	if [ "$1" = "NOTIFY_BACKUP" ]; then
-		logger "Executing sync_leases.sh for DHCP lease sync in BACKUP state"
+# --- LOGIC CHANGE HIGHLIGHT ---
+# Master主机会主动同步leases文件给Backup主机
+master_initiates_sync() {
+	if [ "$1" = "NOTIFY_MASTER" ]; then
+		logger "Executing sync_leases.sh to push DHCP leases in MASTER state"
+		# 使用 & 在后台运行，避免阻塞keepalived主进程
 		/etc/keepalived/scripts/sync_leases.sh &
 	fi
 }
 
-# Schedule sync dhcp.leases
+# --- LOGIC CHANGE HIGHLIGHT ---
+# Master主机上设置定时任务，Backup主机上则移除
 schedule_sync_leases() {
-	if [ "$1" = "NOTIFY_BACKUP" ]; then
+	if [ "$1" = "NOTIFY_MASTER" ]; then
+		# 检查crontab中是否已存在该任务
 		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
-			logger "Scheduling periodic DHCP lease sync"
+			logger "Scheduling periodic DHCP lease sync on MASTER"
+			# 每分钟执行一次同步脚本
 			(crontab -l 2>/dev/null; echo "*/1 * * * * /etc/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
 		else
 			logger "DHCP lease sync cron job already exists, skipping"
 		fi
-	elif [ "$1" = "NOTIFY_MASTER" ] || [ "$1" = "NOTIFY_FAULT" ]; then
+	elif [ "$1" = "NOTIFY_BACKUP" ] || [ "$1" = "NOTIFY_FAULT" ]; then
+		# 检查crontab中是否存在该任务
 		if crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
-			logger "Removing DHCP lease sync cron job"
+			logger "Removing DHCP lease sync cron job on BACKUP/FAULT"
+			# 从crontab中移除该任务
 			(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
 		else
 			logger "No DHCP lease sync cron job found, skipping removal"
 		fi
 	fi
 }
+# --- END OF LOGIC CHANGE ---
+
 
 # Process Keepalived state directly from the ACTION
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
@@ -247,11 +256,11 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	add_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
-	# Skip sync_leases.sh
-	logger "Skipping sync_leases.sh due to MASTER state"
-
-	# Delete schedule
+	# --- MODIFIED BLOCK ---
+	# Master initiates a sync and schedules future syncs
+	master_initiates_sync "$ACTION"
 	schedule_sync_leases "$ACTION"
+	# --- END OF MODIFICATION ---
 
 	# Disable cloudflared
 	disable_cloudflared "$ACTION"
@@ -278,11 +287,10 @@ elif [ "$ACTION" = "NOTIFY_BACKUP" ]; then
 	clear_dhcpv6_ra_flags "$ACTION"
 	restart_odhcpd_if_needed
 
-	# Sync leases on backup router
-	sync_leases_if_needed "$ACTION"
-
-	# Add schedule
+	# --- MODIFIED BLOCK ---
+	# Backup router now only removes the cron job
 	schedule_sync_leases "$ACTION"
+	# --- END OF MODIFICATION ---
 
 elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	logger "Keepalived state is FAULT, disabling services"
@@ -293,6 +301,8 @@ elif [ "$ACTION" = "NOTIFY_FAULT" ]; then
 	# Disable cloudflared
 	disable_cloudflared "$ACTION"
 
-	# Remove schedule
+	# --- MODIFIED BLOCK ---
+	# Remove schedule on FAULT state
 	schedule_sync_leases "$ACTION"
+	# --- END OF MODIFICATION ---
 fi
