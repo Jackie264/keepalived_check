@@ -278,7 +278,7 @@ if [ "$ACTION" = "NOTIFY_MASTER" ]; then
 	# 这一步应该在 dnsmasq 启动之前完成，确保它能加载到最新的租约
 	master_initiates_sync "PULL_ON_MASTER_START"
 	# 给拉取操作一些时间
-	sleep 1 # 从 1s 增加到 3s，以确保rsync有足够时间完成
+	sleep 1
 
 	# Enable DHCPv4
 	enable_dhcpv4_add_option "$ACTION"
