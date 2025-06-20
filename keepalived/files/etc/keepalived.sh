@@ -230,6 +230,29 @@ master_initiates_sync() {
 }
 # --- END OF MODIFIED BLOCK ---
 
+# Master主机上设置定时任务，Backup主机上则移除
+schedule_sync_leases() {
+	if [ "$1" = "NOTIFY_MASTER" ]; then
+		# 检查crontab中是否已存在该任务
+		if ! crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
+			logger "Scheduling periodic DHCP lease sync on MASTER"
+			# 每分钟执行一次同步脚本
+			(crontab -l 2>/dev/null; echo "*/1 * * * * /etc/keepalived/scripts/sync_leases.sh") | crontab - 2>/dev/null || logger "Error setting cron job"
+		else
+			logger "DHCP lease sync cron job already exists, skipping"
+		fi
+	elif [ "$1" = "NOTIFY_BACKUP" ] || [ "$1" = "NOTIFY_FAULT" ]; then
+		# 检查crontab中是否存在该任务
+		if crontab -l 2>/dev/null | grep -q 'sync_leases.sh'; then
+			logger "Removing DHCP lease sync cron job on BACKUP/FAULT"
+			# 从crontab中移除该任务
+			(crontab -l 2>/dev/null | grep -v 'sync_leases.sh') | crontab - 2>/dev/null || logger "Error removing cron job"
+		else
+			logger "No DHCP lease sync cron job found, skipping removal"
+		fi
+	fi
+}
+# --- END OF LOGIC CHANGE ---
 
 # Process Keepalived state directly from the ACTION
 if [ "$ACTION" = "NOTIFY_MASTER" ]; then
